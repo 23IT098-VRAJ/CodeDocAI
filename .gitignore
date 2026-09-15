@@ -1,0 +1,98 @@
+# =============================================================================
+# CodeDocAI — Global .gitignore
+# =============================================================================
+
+# --- Bytecode & Python Cache ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+
+# --- Virtual Environments ---
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.conda/
+
+# --- Streamlit Secrets & Local Config ---
+.streamlit/secrets.toml
+.streamlit/*.local.toml
+
+# --- Environment Variables & API Credentials ---
+.env
+.env.*
+*.env
+!.env.example
+secrets.json
+*.pem
+*.key
+*.cert
+
+# --- IDE & Editor Settings ---
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
+
+# --- Operating System Artifacts ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# --- Antigravity & AI Agent Artifacts ---
+.gemini/
+scratch/
+
+# --- Testing, Coverage & Linters ---
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.mypy_cache/
+.pyre/
+.pytype/
+.ruff_cache/
+
+# --- Build, Distribution & Packaging ---
+build/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# --- Runtime Generated Exports & Archives ---
+*.zip
+*.tar.gz
+*.tgz
+*.log
+logs/
+*.tmp
+*.temp
+codedocai_export.zip
