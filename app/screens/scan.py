@@ -130,76 +130,44 @@ def render_scan() -> None:
                     py_files = repo_source.get("py_files", [])
 
                     # Pre-calculate file function totals so the ledger renders correctly
-                    file_stats = {}
-                    func_to_file = {}
+                    # Calculate AST statistics without running heavy generation pipeline
+                    ledger_results = []
+                    total_missing = 0
+                    total_functions = 0
+
                     for rel_p in py_files:
                         norm_p = rel_p.replace("\\", "/")
                         abs_p = os.path.join(local_path, rel_p)
-                        file_stats[norm_p] = {"path": norm_p, "functions": 0, "missing": 0}
+                        status_box.write(f"🔍 Parsing AST: `{norm_p}`")
+                        
                         try:
                             with open(abs_p, "r", encoding="utf-8", errors="ignore") as f:
                                 content = f.read()
-                            funcs = extract_functions(content, rel_p)
-                            file_stats[norm_p]["functions"] = len(funcs)
-                            for fn in funcs:
-                                func_to_file.setdefault(fn["name"], []).append(norm_p)
-                        except Exception:
-                            pass
+                            funcs = extract_functions(content, norm_p)
+                            func_count = len(funcs)
+                            missing_count = sum(1 for fn in funcs if not fn.get("has_docstring", False))
+                            
+                            if func_count > 0:
+                                ledger_results.append({
+                                    "path": norm_p,
+                                    "functions": func_count,
+                                    "missing": missing_count,
+                                })
+                                total_functions += func_count
+                                total_missing += missing_count
+                        except Exception as e:
+                            print(f"Error parsing {norm_p}: {e}")
 
-                    current_file = py_files[0].replace("\\", "/") if py_files else None
-
-                    # 2. Streaming Phase
-                    for event in run_pipeline(repo_source):
-                        ev_type = event.get("type")
-
-                        if ev_type == "progress":
-                            fn_or_file = event.get("function", "")
-                            status_txt = event.get("status", "")
-                            if status_txt == "parsing":
-                                current_file = fn_or_file.replace("\\", "/")
-                                status_box.write(f"🔍 Parsing: `{current_file}`")
-                            elif status_txt == "summarizing":
-                                status_box.write(f"⚡ Summarizing: `{fn_or_file}`")
-                            else:
-                                status_box.write(f"⚙️ {status_txt.capitalize()}: {fn_or_file}")
-
-                        elif ev_type == "result":
-                            fn_name = event.get("function", "")
-                            docstring = event.get("docstring", "")
-                            is_missing = (docstring != "(Original docstring retained)")
-
-                            target_file = None
-                            if fn_name in func_to_file and func_to_file[fn_name]:
-                                target_file = func_to_file[fn_name].pop(0)
-                            elif current_file:
-                                target_file = current_file
-
-                            if target_file and target_file in file_stats:
-                                if is_missing:
-                                    file_stats[target_file]["missing"] += 1
-
-                        elif ev_type == "error":
-                            st.session_state["scan_status"] = "error"
-                            st.session_state["scan_error_message"] = event.get("message", "Pipeline failed.")
-                            status_box.update(label="Scan failed", state="error")
-                            st.rerun()
-
-                        elif ev_type == "done":
-                            # Compile final ledger list
-                            ledger_results = [stats for stats in file_stats.values() if stats["functions"] > 0]
-                            file_count = len(ledger_results)
-                            missing_count = sum(r["missing"] for r in ledger_results)
-
-                            st.session_state["scan_results"] = ledger_results
-                            st.session_state["scan_summary"] = {
-                                "file_count": file_count,
-                                "missing_count": missing_count,
-                            }
-                            st.session_state["scan_status"] = "populated"
-                            st.session_state["scan_error_message"] = None
-                            st.session_state["repo_overview"] = event.get("overview", "")
-                            status_box.update(label="Repository scan complete!", state="complete", expanded=False)
-                            st.rerun()
+                    file_count = len(ledger_results)
+                    st.session_state["scan_results"] = ledger_results
+                    st.session_state["scan_summary"] = {
+                        "file_count": file_count,
+                        "missing_count": total_missing,
+                    }
+                    st.session_state["scan_status"] = "populated"
+                    st.session_state["scan_error_message"] = None
+                    status_box.update(label="Repository scan complete!", state="complete", expanded=False)
+                    st.rerun()
 
             except RepoValidationError as e:
                 st.session_state["scan_status"] = "error"
