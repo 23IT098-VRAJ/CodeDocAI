@@ -19,16 +19,15 @@ env.bak/
 venv.bak/
 .conda/
 
-# --- Streamlit Secrets & Local Config ---
-.streamlit/secrets.toml
-.streamlit/*.local.toml
-
 # --- Environment Variables & API Credentials ---
 .env
 .env.*
 *.env
 !.env.example
 secrets.json
+secrets.toml
+.streamlit/secrets.toml
+.streamlit/*.local.toml
 *.pem
 *.key
 *.cert
@@ -96,3 +95,16 @@ logs/
 *.tmp
 *.temp
 codedocai_export.zip
+
+# --- CodeDocAI Specific Caches & Models ---
+# Local AI Model Weights (>100MB GitHub limit)
+my_docstring_project/
+*.safetensors
+*.bin
+
+# Dynamic Runtime Caches
+docs_cache.json
+api_cooldowns.json
+
+# Diagnostic scripts
+test_*.py
