@@ -3,6 +3,7 @@ screens/generation.py -- CodeDocAI
 Generation / progress screen renderer (Phase 6 Real Pipeline Integration).
 """
 
+import inspect
 import streamlit as st
 
 try:
@@ -12,6 +13,20 @@ except ImportError:
 
 # Import the real pipeline orchestrator
 from backend.pipeline import run_pipeline
+
+
+def _invoke_pipeline(repo_source):
+    """
+    Invokes run_pipeline while passing the cached CodeT5 engine if
+    the backend pipeline function accepts it.
+    """
+    ai_engine = st.session_state.get("ai_engine")
+    sig = inspect.signature(run_pipeline)
+    
+    if "ai_engine" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+        return run_pipeline(repo_source, ai_engine=ai_engine)
+    return run_pipeline(repo_source)
+
 
 def render_generation() -> None:
     # Shared Top Navigation Rail
@@ -77,7 +92,7 @@ def render_generation() -> None:
 
     # Run the generator directly in the main thread
     with st.spinner("Executing Multi-Agent Documentation Pipeline..."):
-        for event in run_pipeline(repo_source):
+        for event in _invoke_pipeline(repo_source):
             e_type = event.get("type")
             
             if e_type == "progress":
