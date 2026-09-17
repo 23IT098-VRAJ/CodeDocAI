@@ -8,6 +8,7 @@ import html as _html
 import math as _math
 import re as _re
 import time
+import datetime
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -19,7 +20,6 @@ except ImportError:
 
 # ---------------------------------------------------------------------------
 # Timing constants for the typewriter log -- kept in sync with JS.
-# Changing either value here MUST be reflected in _build_log_component().
 # ---------------------------------------------------------------------------
 _MS_PER_CHAR   = 16    # milliseconds typed per character
 _PAUSE_PER_LINE = 200  # milliseconds pause after each line finishes
@@ -38,7 +38,6 @@ def _highlight_python(source_code: str) -> str:
     """
     escaped = _html.escape(source_code, quote=False)
 
-    # Match double and single quoted strings, including f-strings
     str_pattern = r'(f?"[^"\\]*(?:\\.[^"\\]*)*"|f?\'[^\'\\]*(?:\\.[^\'\\]*)*\')'
     kw_list = [
         "def", "return", "if", "for", "in", "global", "import", "from",
@@ -69,16 +68,21 @@ def _highlight_python(source_code: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# State reset
+# State reset (Comprehensive Session Wipe)
 # ---------------------------------------------------------------------------
 def _reset_to_new_scan() -> None:
     """
-    Reset scan and generation state to defaults and navigate to Scan screen.
+    Completely purge all scan, pipeline, and RAG data from session state
+    and navigate cleanly back to the Scan screen.
     """
     st.session_state["scan_status"] = "idle"
     st.session_state["scan_results"] = None
     st.session_state["scan_summary"] = None
     st.session_state["scan_error_message"] = None
+    st.session_state["scan_github_url"] = ""
+    st.session_state["repo_source"] = None
+    st.session_state["repo_overview"] = None
+    st.session_state["pipeline_results"] = None
     st.session_state["generation_attempt"] = 0
     st.session_state["generation_complete"] = False
     st.session_state["qa_chat_history"] = []
@@ -90,34 +94,21 @@ def _reset_to_new_scan() -> None:
 # Navigation Rail
 # ---------------------------------------------------------------------------
 def render_nav_rail(current_screen: str) -> None:
-    """
-    Shared top navigation rail for Scan, Generation, Docs, Q&A, and Export screens.
-    Renders wordmark on the left and breadcrumb steps on the right.
-
-    Gating (Session 6a-fix + Session 7):
-    - SCAN: always reachable
-    - GENERATE: reachable only when scan_status == 'populated'
-    - DOCS, Q&A, EXPORT: reachable only when generation_complete == True
-    """
     scan_status = st.session_state.get("scan_status", "idle")
     is_scan_populated = (scan_status == "populated")
     is_gen_complete = st.session_state.get("generation_complete", False)
 
-    # 10 columns: Wordmark, Step1, Arr1, Step2, Arr2, Step3, Arr3, Step4, Arr4, Step5
-    # Proportions sized so no label wraps; white-space:nowrap enforced in CSS.
     cols = st.columns(
         [2.5, 1.2, 0.3, 1.8, 0.3, 1.1, 0.3, 1.0, 0.3, 1.3],
         vertical_alignment="center",
     )
 
-    # 1. Wordmark -> returns to landing
     with cols[0]:
         st.markdown('<div id="rail-wordmark"></div>', unsafe_allow_html=True)
         if st.button("CodeDocAI", key="rail_home"):
             st.session_state["current_screen"] = "landing"
             st.rerun()
 
-    # Step reachability map
     reachability = {
         "scan": True,
         "generation": is_scan_populated,
@@ -126,7 +117,6 @@ def render_nav_rail(current_screen: str) -> None:
         "export": is_gen_complete,
     }
 
-    # Step definitions: (screen_key, display_label, button_key, marker_id)
     steps = [
         ("scan",       "SCAN",     "rail_scan",     "rail-step-scan"),
         ("generation", "GENERATE", "rail_generate", "rail-step-generate"),
@@ -138,7 +128,6 @@ def render_nav_rail(current_screen: str) -> None:
     col_indices   = [1, 3, 5, 7, 9]
     arrow_indices = [2, 4, 6, 8]
 
-    # Render arrows (using inline SVG for perfect vertical centering)
     svg_chevron = (
         '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" '
         'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
@@ -148,21 +137,17 @@ def render_nav_rail(current_screen: str) -> None:
         with cols[arr_col_idx]:
             st.markdown(f'<div class="rail-arrow">{svg_chevron}</div>', unsafe_allow_html=True)
 
-    # Render steps
     for i, (scr_key, label, btn_key, marker_id) in enumerate(steps):
         col = cols[col_indices[i]]
         with col:
             if current_screen == scr_key:
-                # Current step -- bold/underlined amber, non-clickable
                 st.markdown(f'<div class="rail-current">{label}</div>', unsafe_allow_html=True)
             elif reachability.get(scr_key, False):
-                # Reachable step -- button styled as breadcrumb link
                 st.markdown(f'<div id="{marker_id}"></div>', unsafe_allow_html=True)
                 if st.button(label, key=btn_key):
                     st.session_state["current_screen"] = scr_key
                     st.rerun()
             else:
-                # Unreachable step -- inert muted text
                 st.markdown(f'<div class="rail-muted">{label}</div>', unsafe_allow_html=True)
 
     st.markdown('<hr class="nav-rail-divider">', unsafe_allow_html=True)
@@ -172,17 +157,15 @@ def render_nav_rail(current_screen: str) -> None:
 # Scan helpers
 # ---------------------------------------------------------------------------
 def _is_github_url(url: str) -> bool:
-    """Return True if url looks like a plausible GitHub URL."""
     u = url.strip().lower()
     return u.startswith("https://github.com/") or u.startswith("http://github.com/")
 
 
 def _run_mock_scan(uploaded_file, github_url: str) -> None:
-    """
-    Validate inputs, run mock scan (with spinner), write results to session_state.
-    Priority: uploaded file > github_url.
-    """
-    from fixtures import _FIXTURE_DEFAULT, _FIXTURE_CLEAN
+    try:
+        from fixtures import _FIXTURE_DEFAULT, _FIXTURE_CLEAN
+    except ImportError:
+        from app.fixtures import _FIXTURE_DEFAULT, _FIXTURE_CLEAN
 
     if uploaded_file is None and github_url.strip() == "":
         st.session_state["scan_status"] = "error"
@@ -233,20 +216,11 @@ def _run_mock_scan(uploaded_file, github_url: str) -> None:
 # Generation log builder
 # ---------------------------------------------------------------------------
 def _build_generation_log(scan_results: list, rate_limited: bool) -> tuple:
-    """
-    Build the list of log lines and the expected total animation duration.
-
-    Returns:
-        lines      -- list of (text:str, color:str) tuples
-        duration_s -- float seconds Python should sleep before showing outcome
-    """
     AMBER = "#FFD700"
     RED   = "#E5484D"
     MUTED = "#9CA3AF"
 
     lines = []
-
-    # Per-file drafting lines  (derived from scan_results, never hardcoded)
     for row in scan_results:
         path    = row["path"]
         missing = row["missing"]
@@ -259,15 +233,12 @@ def _build_generation_log(scan_results: list, rate_limited: bool) -> tuple:
             color = MUTED
         lines.append((text, color))
 
-    # Synthesize line -- always present; color/wording differs by outcome
     if rate_limited:
         lines.append(("synthesizing module overview... rate limit reached", RED))
-        # No index line follows when rate-limited
     else:
         lines.append(("synthesizing module overview... done", AMBER))
         lines.append(("indexing for Q&A... done", AMBER))
 
-    # Approximate total animation duration (matches JS timing constants)
     total_chars = sum(len(t) for t, _ in lines)
     total_ms    = total_chars * _MS_PER_CHAR + len(lines) * _PAUSE_PER_LINE
     duration_s  = total_ms / 1000.0
@@ -276,14 +247,6 @@ def _build_generation_log(scan_results: list, rate_limited: bool) -> tuple:
 
 
 def _build_log_component(lines: list, height: int = 340) -> str:
-    """
-    Build the self-contained HTML/JS string for the typewriter log.
-    Rendered via components.v1.html() so <script> actually executes.
-
-    Timing constants (_MS_PER_CHAR, _PAUSE_PER_LINE) must stay in sync
-    with the module-level values above.
-    """
-    # Serialize lines as a JS array literal
     js_lines = "[\n"
     for text, color in lines:
         safe_text  = text.replace("\\", "\\\\").replace("'", "\\'")
@@ -298,7 +261,7 @@ def _build_log_component(lines: list, height: int = 340) -> str:
 <style>
   * {{ margin:0; padding:0; box-sizing:border-box; }}
   body {{
-    background: transparent; /* Let the iframe be invisible */
+    background: transparent;
     font-family: 'IBM Plex Mono', 'Courier New', monospace;
     font-feature-settings: 'liga' 0, 'calt' 0;
     font-variant-ligatures: none;
@@ -383,51 +346,46 @@ def _build_log_component(lines: list, height: int = 340) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Docs markdown builder
+# Docs Markdown Builder (Defensive Key Parsing)
 # ---------------------------------------------------------------------------
-def _build_docs_markdown(scan_results: list, scan_summary: dict) -> str:
-    """
-    Build the full markdown string for the download button.
-    Derived entirely from scan_results + _FIXTURE_FUNCTIONS -- never hardcoded.
-    """
-    lines = ["# CodeDocAI \u2014 Generated Documentation\n"]
-    missing_count = scan_summary.get("missing_count", 0) if scan_summary else 0
-
-    if missing_count == 0:
-        lines.append(
-            "_Codebase fully documented \u2014 0 missing docstrings detected._\n"
-        )
-        for row in (scan_results or []):
-            lines.append(f"- `{row['path']}` \u2014 already documented.\n")
-        return "\n".join(lines)
-
-    for row in (scan_results or []):
-        path    = row["path"]
-        missing = row["missing"]
-        funcs   = row["functions"]
-
-        lines.append(f"\n---\n\n## `{path}`\n")
-
-        if missing == 0:
-            lines.append(f"_{path} \u2014 already documented._\n")
-            continue
-
-        # File has missing functions -- use fixture data
-        file_data = _FIXTURE_FUNCTIONS.get(path)
-        if file_data is None:
-            lines.append("_Documentation drafted for this file._\n")
-            continue
-
-        module_summary = file_data["module_summary"]
-        overview = (
-            f"{module_summary} {missing} of its {funcs} functions shipped "
-            f"without docstrings; each is drafted below from its implementation."
-        )
-        lines.append(f"{overview}\n")
-
-        for fn in file_data["functions"]:
-            lines.append(f"\n### `{fn['name']}` _(ai draft)_\n")
-            lines.append(f"**Docstring:**\n\n> {fn['docstring']}\n")
-            lines.append(f"\n**Source:**\n\n```python\n{fn['source']}\n```\n")
-
+def _build_docs_markdown(pipeline_results: dict = None, scan_summary: dict = None) -> str:
+    """Compiles the generated pipeline documentation payload into formatted Markdown."""
+    lines = []
+    
+    current_utc = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+    lines.append("# CodeDocAI Generated Documentation")
+    lines.append(f"*Generated on: {current_utc} UTC*\n")
+    lines.append("---\n")
+    
+    if not pipeline_results:
+        pipeline_results = st.session_state.get("pipeline_results") or {}
+        
+    overview = pipeline_results.get("overview", "No architecture overview generated.")
+    lines.append(overview)
+    lines.append("\n---\n")
+    lines.append("## Module Documentation\n")
+    
+    functions = pipeline_results.get("functions", [])
+    files_dict = {}
+    for fn in functions:
+        # Fallback hierarchy to prevent "unknown_file.py"
+        file_name = fn.get("file") or fn.get("file_path") or fn.get("path") or "unknown_file.py"
+        files_dict.setdefault(file_name, []).append(fn)
+        
+    for file_name, funcs in files_dict.items():
+        lines.append(f"### File: `{file_name}`")
+        for fn in funcs:
+            fn_name = fn.get("name", fn.get("function", "unknown_function"))
+            docstring = fn.get("docstring", "No docstring available.")
+            source = fn.get("source", fn.get("code", ""))
+            
+            lines.append(f"#### `def {fn_name}()`")
+            lines.append("**Description & Parameters:**")
+            lines.append(f"```python\n{docstring}\n```")
+            lines.append("**Source Code:**")
+            lines.append("<details><summary>Click to expand</summary>\n")
+            lines.append(f"```python\n{source}\n```\n")
+            lines.append("</details>\n")
+        lines.append("---\n")
+        
     return "\n".join(lines)
