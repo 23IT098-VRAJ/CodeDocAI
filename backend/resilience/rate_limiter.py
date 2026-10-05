@@ -97,16 +97,19 @@ def execute_with_failover(agent_builder_func: Callable[[LLM], Any]) -> Any:
             return agent_builder_func(active_llm)
             
         except Exception as e:
+            print(f"\n[💥 RAW ERROR FROM API]: {str(e)}\n")
+            
             err_str = str(e).lower()
             
             if "all_apis_cooling" in err_str:
                 raise Exception("All API keys are currently in a 2-minute cooldown. Please wait.")
             
-            # Enhanced Catcher: Now includes Groq's weird 404 and model_not_found drops
             transient_errors = ["429", "quota", "rate", "503", "unavailable", "404", "model_not_found", "not found"]
             
             if any(err in err_str for err in transient_errors):
-                print(f"[!] {active_pid} overloaded or dropped connection. Entering 120s cooldown...")
+                # --- DIAGNOSTIC INJECTION: Expose the raw API error ---
+                print(f"\n[DIAGNOSTIC] {active_pid} Raw Error: {str(e)}")
+                print(f"[!] {active_pid} overloaded or dropped connection. Entering 120s cooldown...\n")
                 _mark_cooling(active_pid)
                 continue 
                 

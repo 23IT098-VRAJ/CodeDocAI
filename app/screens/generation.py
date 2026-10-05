@@ -117,22 +117,30 @@ def render_generation() -> None:
 
     # -- Handle Outcomes --
     if rate_limited:
+        # Allow the user to proceed with the local CodeT5 data
+        st.session_state["generation_complete"] = True 
+        
         outcome_html = (
             '<div class="gen-outcome-section">'
             '<p class="gen-error-msg">'
-            "Gemini\u2019s free-tier rate limit was hit while synthesizing the module overview. "
-            "Try again in a moment."
+            "Cloud APIs are currently unreachable. Local CodeT5 docstrings were successfully saved, but the high-level architecture overview was skipped."
             '</p>'
             '</div>'
         )
         st.markdown(outcome_html, unsafe_allow_html=True)
-        st.markdown('<div id="cta-try-again-marker"></div>', unsafe_allow_html=True)
-        if st.button("TRY AGAIN", key="cta_try_again"):
-            st.session_state["generation_attempt"] = st.session_state.get("generation_attempt", 0) + 1
-            st.rerun()
+        st.markdown('<div id="cta-view-docs-marker"></div>', unsafe_allow_html=True)
+        
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            if st.button("VIEW PARTIAL DOCS", key="cta_view_docs_partial", type="primary"):
+                st.session_state["current_screen"] = "docs"
+                st.rerun()
+        with col2:
+            if st.button("RETRY CLOUD API", key="cta_try_again_cloud"):
+                st.session_state["generation_attempt"] = st.session_state.get("generation_attempt", 0) + 1
+                st.rerun()
             
     elif pipeline_data:
-        # Securely anchor data in the main thread before rerunning
         st.session_state["pipeline_results"] = pipeline_data
         st.session_state["generation_complete"] = True
 

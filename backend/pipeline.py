@@ -138,29 +138,38 @@ def run_pipeline(repo_source: Dict[str, Any], ai_engine: Any = None) -> Generato
 
     yield {"type": "progress", "function": "Repository", "status": "generating system overview via CrewAI"}
     
+    # -> INJECT PARTIAL SAVE HERE <-
+    # Secure local CodeT5 work immediately so a cloud crash doesn't wipe the session
+    final_data = {
+        "type": "done",
+        "overview": "⚠️ Architecture overview generation skipped (Cloud APIs currently unreachable).",
+        "functions": all_functions_docs
+    }
+    st.session_state["pipeline_results"] = final_data
+    try:
+        with open(_CACHE_PATH, "w", encoding="utf-8") as f:
+            json.dump(final_data, f)
+    except Exception:
+        pass
+
     # --- 4. CLOUD SYNTHESIS (GEMINI/CREWAI) ---
     overview_text = ""
     try:
         sample_code_block = "\n---\n".join(combined_overview_context[:8])
         overview_text = generate_module_overview("Repository Architecture", sample_code_block)
+        
+        # If successful, overwrite the warning message with the real overview
+        final_data["overview"] = overview_text
+        st.session_state["pipeline_results"] = final_data
+        try:
+            with open(_CACHE_PATH, "w", encoding="utf-8") as f:
+                json.dump(final_data, f)
+        except Exception:
+            pass
+
     except Exception as e:
         print(f"\n[!] CrewAI Generation Failed: {str(e)}\n")
         yield {"type": "rate_limited", "message": str(e)}
         return
 
-    final_data = {
-        "type": "done",
-        "overview": overview_text,
-        "functions": all_functions_docs
-    }
-    
-    st.session_state["pipeline_results"] = final_data
-    
-    try:
-        with open(_CACHE_PATH, "w", encoding="utf-8") as f:
-            json.dump(final_data, f)
-    except Exception as e:
-        print(f"Cache write failed: {e}")
-        pass
-        
     yield final_data
