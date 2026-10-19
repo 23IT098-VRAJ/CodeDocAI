@@ -7,11 +7,15 @@ and docs markdown builder.
 import html as _html
 import math as _math
 import re as _re
-import time
 import datetime
+import json
+import os
+import time
 
 import streamlit as st
 import streamlit.components.v1 as components
+
+_AUDIT_FILE = "enterprise_audit.json"
 
 try:
     from fixtures import _FIXTURE_FUNCTIONS
@@ -389,3 +393,33 @@ def _build_docs_markdown(pipeline_results: dict = None, scan_summary: dict = Non
         lines.append("---\n")
         
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Audit Logger (SOC-2 Compliance)
+# ---------------------------------------------------------------------------
+def log_audit(action: str, details: str, user: str, severity: str = "INFO"):
+    """Writes a timestamped SOC-2 compliance log to the enterprise audit ledger."""
+    entry = {
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "user": user,
+        "action": action,
+        "severity": severity,
+        "details": details
+    }
+    
+    logs = []
+    if os.path.exists(_AUDIT_FILE):
+        try:
+            with open(_AUDIT_FILE, "r", encoding="utf-8") as f:
+                logs = json.load(f)
+        except Exception:
+            pass
+            
+    logs.append(entry)
+    
+    try:
+        with open(_AUDIT_FILE, "w", encoding="utf-8") as f:
+            json.dump(logs, f, indent=2)
+    except Exception:
+        pass

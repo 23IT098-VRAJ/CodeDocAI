@@ -108,3 +108,5 @@ api_cooldowns.json
 
 # Diagnostic scripts
 test_*.py
+
+enterprise_audit.json

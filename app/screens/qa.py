@@ -8,6 +8,11 @@ import re as _re
 import streamlit as st
 
 try:
+    from helpers import log_audit
+except ImportError:
+    from app.helpers import log_audit
+
+try:
     from helpers import render_nav_rail, _reset_to_new_scan
 except ImportError:
     from app.helpers import render_nav_rail, _reset_to_new_scan
@@ -35,7 +40,7 @@ def _process_and_append_qa(question: str):
             answer_text = f"⚠️ Unable to generate answer due to API cooldown or network interruption ({e}). Please try again in 2 minutes."
             citations = []
         
-        # 3. Defensive Citation Formatting (handles both dict and str items)
+        # 3. Defensive Citation Formatting
         cit_text = ""
         if citations:
             cit_parts = []
@@ -69,34 +74,19 @@ def render_qa() -> None:
     qa_chat_history = st.session_state.get("qa_chat_history", [])
 
     if scan_results is None:
-        st.markdown(
-            '<div class="docs-empty-head">No codebase to ask about yet.</div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            '<p class="docs-empty-sub">Initialize a scan to build the vector index.</p>',
-            unsafe_allow_html=True,
-        )
+        st.markdown('<div class="docs-empty-head">No codebase to ask about yet.</div>', unsafe_allow_html=True)
+        st.markdown('<p class="docs-empty-sub">Initialize a scan to build the vector index.</p>', unsafe_allow_html=True)
         return
 
     st.markdown('<div class="section-label">ASK THE CODEBASE</div>', unsafe_allow_html=True)
 
     if not qa_chat_history:
-        st.markdown(
-            '<p class="qa-intro">'
-            'Ask anything about this codebase \u2014 answers are grounded in the code '
-            'itself, with a citation back to the source.'
-            '</p>',
-            unsafe_allow_html=True,
-        )
+        st.markdown('<p class="qa-intro">Ask anything about this codebase \u2014 answers are grounded in the code itself, with a citation back to the source.</p>', unsafe_allow_html=True)
 
         total_funcs = sum(row.get("functions", row.get("missing", 0)) for row in scan_results)
         total_files = len(scan_results)
 
-        st.markdown(
-            f'<div class="vector-status-bar"><span class="vector-active-dot">●</span> [ChromaDB Active] &middot; Vectorized {total_funcs} functions across {total_files} files.</div>',
-            unsafe_allow_html=True
-        )
+        st.markdown(f'<div class="vector-status-bar"><span class="vector-active-dot">●</span> [ChromaDB Active] &middot; Vectorized {total_funcs} functions across {total_files} files.</div>', unsafe_allow_html=True)
 
         example_queries = [
             "How does the AST parser handle nested definitions?",
@@ -106,10 +96,11 @@ def render_qa() -> None:
 
         chip_cols = st.columns(len(example_queries), gap="small")
         for i, q_text in enumerate(example_queries):
-            chip_key = f"qa_chip_{i+1}"
             with chip_cols[i]:
                 st.markdown('<div class="qa-chip-marker"></div>', unsafe_allow_html=True)
-                if st.button(f"{q_text}\u00A0\u2192", key=chip_key, use_container_width=True):
+                if st.button(f"{q_text}\u00A0\u2192", key=f"qa_chip_{i+1}", use_container_width=True):
+                    if st.session_state.get("authenticated") and st.session_state.get("role") == "developer":
+                        log_audit("Q&A_QUERY", f"Asked AI: '{q_text}'", st.session_state.get("username"))
                     _process_and_append_qa(q_text)
                     st.rerun()
 
@@ -121,77 +112,56 @@ def render_qa() -> None:
 
             if user_msg:
                 q_text = _html.escape(user_msg.get("content", ""))
-                transcript_html += (
-                    f'<div class="qa-turn">'
-                    f'<div class="qa-q-row">'
-                    f'<span class="qa-turn-label qa-q-label">Q</span>'
-                    f'<div class="qa-q-text">{q_text}</div>'
-                    f'</div>'
-                )
+                transcript_html += f'<div class="qa-turn"><div class="qa-q-row"><span class="qa-turn-label qa-q-label">Q</span><div class="qa-q-text">{q_text}</div></div>'
 
                 if asst_msg:
                     raw_content = asst_msg.get("content", "")
                     a_text = _html.escape(raw_content)
-                    
-                    # Regex replacement opens AND closes HTML tags correctly
                     a_text = _re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', a_text)
                     a_text = _re.sub(r'`(.*?)`', r'<code>\1</code>', a_text)
                     
                     citation = asst_msg.get("citation")
-                    citation_html = ""
-                    fallback_class = ""
-                    if citation:
-                        cit_esc = _html.escape(citation)
-                        citation_html = f'<div class="qa-citation-pill">{cit_esc}</div>'
-                    else:
-                        fallback_class = " qa-a-fallback"
+                    citation_html = f'<div class="qa-citation-pill">{_html.escape(citation)}</div>' if citation else ""
+                    fallback_class = "" if citation else " qa-a-fallback"
 
-                    transcript_html += (
-                        f'<div class="qa-a-row">'
-                        f'<span class="qa-turn-label qa-a-label">A</span>'
-                        f'<div class="qa-a-body">'
-                        f'<div class="qa-a-text{fallback_class}">{a_text}</div>'
-                        f'{citation_html}'
-                        f'</div>'
-                        f'</div>'
-                    )
-
+                    transcript_html += f'<div class="qa-a-row"><span class="qa-turn-label qa-a-label">A</span><div class="qa-a-body"><div class="qa-a-text{fallback_class}">{a_text}</div>{citation_html}</div></div>'
                 transcript_html += '</div>'
-
         transcript_html += '</div>'
         st.markdown(transcript_html, unsafe_allow_html=True)
 
     # ------------------------------------------------------------------
-    # Query Input Row
+    # Query Input Row (Wrapped in st.empty to prevent shadow bug)
     # ------------------------------------------------------------------
-    st.markdown('<div class="qa-ask-wrap">', unsafe_allow_html=True)
-    with st.form(key="qa_ask_form", clear_on_submit=True):
-        col_input, col_submit = st.columns([5, 1], gap="medium", vertical_alignment="bottom")
-        with col_input:
-            user_input = st.text_input(
-                label="Ask a question about this codebase",
-                placeholder='Query the codebase (e.g., "Where is the AST parsed?")...',
-                key="qa_input",
-                label_visibility="collapsed",
-                autocomplete="off",
-            )
-        with col_submit:
-            submit_clicked = st.form_submit_button("ASK", use_container_width=True)
+    form_placeholder = st.empty()
+    
+    with form_placeholder.container():
+        st.markdown('<div class="qa-ask-wrap">', unsafe_allow_html=True)
+        with st.form(key="qa_ask_form", clear_on_submit=True):
+            col_input, col_submit = st.columns([5, 1], gap="medium", vertical_alignment="bottom")
+            with col_input:
+                user_input = st.text_input(
+                    label="Ask a question about this codebase",
+                    placeholder='Query the codebase (e.g., "Where is the AST parsed?")...',
+                    key="qa_input",
+                    label_visibility="collapsed",
+                    autocomplete="off",
+                )
+            with col_submit:
+                submit_clicked = st.form_submit_button("ASK", use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-        if submit_clicked:
-            clean_q = user_input.replace("\u00A0\u2192", "").replace(" \u2192", "").replace(" →", "").strip()
-            if clean_q:
-                _process_and_append_qa(clean_q)
-                st.rerun()
-                
-    st.markdown('</div>', unsafe_allow_html=True)
+    # Execute processing outside the placeholder so it can be destroyed
+    if submit_clicked:
+        clean_q = user_input.replace("\u00A0\u2192", "").replace(" \u2192", "").replace(" →", "").strip()
+        if clean_q:
+            form_placeholder.empty() # Destroys the form UI instantly while processing
+            if st.session_state.get("authenticated") and st.session_state.get("role") == "developer":
+                log_audit("Q&A_QUERY", f"Asked AI: '{clean_q}'", st.session_state.get("username"))
+            _process_and_append_qa(clean_q)
+            st.rerun()
 
-    st.markdown(
-        '<div class="qa-disclaimer">Responses are constrained strictly to the ingested AST and generated docstrings. Context limits apply.</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown('<div class="qa-disclaimer">Responses are constrained strictly to the ingested AST and generated docstrings. Context limits apply.</div>', unsafe_allow_html=True)
 
-    # -- Unified Reset Action --
     st.markdown('<div style="height: 16px;"></div>', unsafe_allow_html=True) 
     _, col_reset, _ = st.columns([3, 2, 3])
     with col_reset:

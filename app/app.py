@@ -46,9 +46,30 @@ except ImportError:
 inject_css()
 
 # ---------------------------------------------------------------------------
+# ENTERPRISE DEMO CONTROLLER (SIDEBAR)
+# ---------------------------------------------------------------------------
+with st.sidebar:
+    st.markdown("### 🏢 Enterprise Demo")
+    if st.session_state.get("authenticated", False):
+        role = st.session_state.get("role", "user")
+        st.success(f"Logged in as: {role.title()}")
+        if st.button("Logout", use_container_width=True):
+            st.session_state["authenticated"] = False
+            st.session_state["role"] = None
+            st.session_state["username"] = None
+            st.session_state["current_screen"] = "landing"
+            st.rerun()
+    else:
+        st.markdown("Simulate a private corporate deployment with RBAC and audit logging.")
+        if st.button("Login to Enterprise", type="primary", use_container_width=True):
+            st.session_state["current_screen"] = "login"
+            st.rerun()
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
 # Session state & URL sync -- initialize keys and support browser back/next.
 # ---------------------------------------------------------------------------
-_VALID_SCREENS = {"landing", "scan", "generation", "docs", "qa", "foundation", "export", "architecture"}
+_VALID_SCREENS = {"landing", "scan", "generation", "docs", "qa", "foundation", "export", "architecture", "login", "manager_dashboard"}
 _url_screen = st.query_params.get("screen")
 
 if _url_screen in _VALID_SCREENS:
@@ -118,6 +139,12 @@ from screens.qa           import render_qa
 from screens.architecture import render_architecture
 from screens.export       import render_export
 from screens.foundation   import render_foundation
+try:
+    from screens.login import render as render_login
+    from screens.manager_dashboard import render as render_manager
+except ImportError:
+    from app.screens.login import render as render_login
+    from app.screens.manager_dashboard import render as render_manager
 
 # ---------------------------------------------------------------------------
 # Screen router
@@ -149,6 +176,10 @@ elif _screen == "export":
     render_export()
 elif _screen == "architecture":
     render_architecture()
+elif _screen == "login":
+    render_login()
+elif _screen == "manager_dashboard":
+    render_manager()
 else:
     # Graceful fallback
     render_landing()
