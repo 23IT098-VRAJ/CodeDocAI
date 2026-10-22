@@ -23,6 +23,23 @@ from backend.agents.qa import answer_codebase_question
 
 def _process_and_append_qa(question: str):
     """Helper to run RAG + CrewAI and append to session state, used by both chips and text input."""
+    
+    # --- FAST-PATH INTERCEPTOR (Saves API calls & prevents Context Forcing) ---
+    import re
+    # Strip punctuation for clean matching (e.g., "Who are you!" -> "who are you")
+    clean_intent = re.sub(r'[^a-zA-Z\s]', '', question.lower().strip())
+    greeting_intents = ["who are you", "what are you", "hello", "hi", "hey", "greetings"]
+    
+    if clean_intent in greeting_intents or clean_intent.startswith("hi ") or clean_intent.startswith("hello "):
+        st.session_state["qa_chat_history"].append({"role": "user", "content": question})
+        st.session_state["qa_chat_history"].append({
+            "role": "assistant",
+            "content": "I am the CodeDocAI Technical Support Engineer. I am an AI agent designed to analyze the ingested AST and generated docstrings of this enterprise repository. How can I help you understand the codebase today?",
+            "citation": None,
+        })
+        return  # Instantly halt execution. Do not query ChromaDB. Do not query the LLM.
+    # --------------------------------------------------------------------------
+
     with st.spinner("Querying ChromaDB vector store and synthesizing response..."):
         # 1. Retrieve RAG context
         try:
@@ -99,8 +116,19 @@ def render_qa() -> None:
             with chip_cols[i]:
                 st.markdown('<div class="qa-chip-marker"></div>', unsafe_allow_html=True)
                 if st.button(f"{q_text}\u00A0\u2192", key=f"qa_chip_{i+1}", use_container_width=True):
+                    
+                    # --- ENTERPRISE INVISIBLE TRACKER (CHIPS) ---
                     if st.session_state.get("authenticated") and st.session_state.get("role") == "developer":
-                        log_audit("Q&A_QUERY", f"Asked AI: '{q_text}'", st.session_state.get("username"))
+                        query_lower = q_text.lower()
+                        if any(threat in query_lower for threat in ["key", "secret", "env", "password", "token", "credential"]):
+                            sev = "CRITICAL"
+                        elif any(warn in query_lower for warn in ["database", "auth", "bypass"]):
+                            sev = "WARNING"
+                        else:
+                            sev = "INFO"
+                        log_audit("Q&A_QUERY", f"Asked AI: '{q_text}'", st.session_state.get("username"), severity=sev)
+                    # --------------------------------------------
+                    
                     _process_and_append_qa(q_text)
                     st.rerun()
 
@@ -155,8 +183,19 @@ def render_qa() -> None:
         clean_q = user_input.replace("\u00A0\u2192", "").replace(" \u2192", "").replace(" →", "").strip()
         if clean_q:
             form_placeholder.empty() # Destroys the form UI instantly while processing
+            
+            # --- ENTERPRISE INVISIBLE TRACKER (TEXT INPUT) ---
             if st.session_state.get("authenticated") and st.session_state.get("role") == "developer":
-                log_audit("Q&A_QUERY", f"Asked AI: '{clean_q}'", st.session_state.get("username"))
+                query_lower = clean_q.lower()
+                if any(threat in query_lower for threat in ["key", "secret", "env", "password", "token", "credential"]):
+                    sev = "CRITICAL"
+                elif any(warn in query_lower for warn in ["database", "auth", "bypass"]):
+                    sev = "WARNING"
+                else:
+                    sev = "INFO"
+                log_audit("Q&A_QUERY", f"Asked AI: '{clean_q}'", st.session_state.get("username"), severity=sev)
+            # -------------------------------------------------
+            
             _process_and_append_qa(clean_q)
             st.rerun()
 

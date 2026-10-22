@@ -64,8 +64,8 @@ def _get_active_llm():
     hierarchy = [
         ("GEMINI_1", "gemini/gemini-3.6-flash", keys.get("GEMINI_1")),
         ("GEMINI_2", "gemini/gemini-3.6-flash", keys.get("GEMINI_2")),
-        ("GROQ_1", "groq/llama-3.3-70b-versatile", keys.get("GROQ_1")),
-        ("GROQ_2", "groq/llama-3.3-70b-versatile", keys.get("GROQ_2")),
+        ("GROQ_1", "groq/openai/gpt-oss-120b", keys.get("GROQ_1")),
+        ("GROQ_2", "groq/openai/gpt-oss-120b", keys.get("GROQ_2")),
     ]
     
     for pid, model_str, key_val in hierarchy:
