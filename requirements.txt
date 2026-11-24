@@ -3,7 +3,7 @@
 # from breaking a fresh install.
 
 # App
-streamlit>=1.66.1,<2
+streamlit>=1.67,<2
 pandas>=2.0,<3
 python-dotenv>=1.0,<2
 

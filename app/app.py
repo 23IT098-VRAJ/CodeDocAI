@@ -12,6 +12,7 @@ import re
 import sys
 import time
 import uuid
+import warnings
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -29,6 +30,10 @@ for _import_root in (_APP_DIR, _ROOT_DIR):
 import streamlit as st
 
 # Libraries log warnings and worse; this project's own modules also log what they are doing.
+# Streamlit's file watcher touches every imported module; torchaudio (pulled in by torch)
+# answers with a deprecation warning that says nothing about this app.
+warnings.filterwarnings("ignore", message="Torchaudio's I/O functions", category=UserWarning)
+
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 for _own_logger in ("codedocai", "backend", "helpers", "screens"):
     logging.getLogger(_own_logger).setLevel(logging.INFO)
@@ -38,14 +43,13 @@ logger = logging.getLogger("codedocai")
 # level two visitors arriving on a cold server imported them at the same moment,
 # and one of them crashed with "cannot import name 'AutoTokenizer'".
 
-_VALID_SCREENS = {"landing", "scan", "generation", "docs", "qa", "foundation", "export", "architecture", "login", "manager_dashboard"}
+_VALID_SCREENS = {"landing", "scan", "generation", "docs", "qa", "foundation", "export", "login", "manager_dashboard"}
 _SCREEN_TITLES = {
     "scan": "Scan",
     "generation": "Generate",
     "docs": "Documentation",
     "qa": "Q&A",
     "export": "Export",
-    "architecture": "How it works",
     "login": "Sign in",
     "manager_dashboard": "Audit log",
     "foundation": "Foundation",
@@ -209,6 +213,24 @@ _sweep_stale_scans_once()
 # ---------------------------------------------------------------------------
 # AI Engine Initialization (Cached to prevent RAM leaks during routing)
 # ---------------------------------------------------------------------------
+_LOADING_SCREEN = """<div class="boot" role="status" aria-live="polite">
+  <div class="boot-mark" aria-hidden="true">
+    <span class="boot-quote"></span><span class="boot-quote"></span><span class="boot-quote"></span>
+  </div>
+  <p class="boot-title">Warming up CodeT5</p>
+  <p class="boot-code" aria-hidden="true"><span class="boot-kw">def</span> warm_up():  <span class="boot-doc">&quot;&quot;&quot;Getting your docstrings ready.&quot;&quot;&quot;</span></p>
+  <p class="boot-lines" aria-hidden="true">
+    <span>Teaching the model your naming conventions…</span>
+    <span>Counting the functions nobody documented…</span>
+    <span>Sharpening triple quotes…</span>
+    <span>Reading code, never running it…</span>
+  </p>
+  <span class="sr-only">Loading the CodeT5 model. This takes a few seconds the first time.</span>
+  <div class="boot-bar" aria-hidden="true"><span></span></div>
+  <p class="boot-note">First start only · about 20 seconds</p>
+</div>"""
+
+
 @st.cache_resource(show_spinner=False)
 def load_ai_engine() -> tuple | None:
     # Imported here so the heavy libraries load once, under the cache's lock.
@@ -224,6 +246,7 @@ def load_ai_engine() -> tuple | None:
     # library's own warnings are muted for the duration of the load only.
     previous_verbosity = transformers_logging.get_verbosity()
     transformers_logging.set_verbosity_error()
+    transformers_logging.disable_progress_bar()  # the "Loading weights" bar in the terminal
     try:
         try:
             tokenizer = AutoTokenizer.from_pretrained(str(model_path))
@@ -243,15 +266,18 @@ def load_ai_engine() -> tuple | None:
         transformers_logging.set_verbosity(previous_verbosity)
 
 # Mount the AI engine to session state so child screens can access it instantly
+# Created on every run, like the scroll box below, so the page under it never shifts between
+# the session's first run (which fills it while the model loads) and the runs after it.
+_boot = st.empty()
 if "ai_engine" not in st.session_state:
     # Loading the weights takes a few seconds on a cold start; say so instead of showing a blank page.
-    with st.spinner("Loading the CodeT5 model"):
-        st.session_state["ai_engine"] = load_ai_engine()
+    _boot.markdown(_LOADING_SCREEN, unsafe_allow_html=True)
+    st.session_state["ai_engine"] = load_ai_engine()
+    _boot.empty()
 
 # ---------------------------------------------------------------------------
 # Screen imports (deferred so set_page_config + CSS fire first)
 # ---------------------------------------------------------------------------
-from screens.architecture import render_architecture
 from screens.docs import render_documentation
 from screens.export import render_export
 from screens.foundation import render_foundation
@@ -279,7 +305,27 @@ def _scroll_to_top() -> None:
     )
     # The keyed container is hidden by CSS. Rendered in the page flow, the script's element
     # added a gap above the screen on transitions only, so the header sat 16px lower then.
-    with st.container(key="scroll_reset"):
+    with _scroll_box:
+        st.html(script, unsafe_allow_javascript=True)
+
+
+def _scroll_to_anchor(anchor: str) -> None:
+    """Brings a section of the page into view (the header's How it works). The section
+    renders after this script, so it waits for the element for up to three seconds."""
+    nonce = st.session_state["_anchor_nonce"] = st.session_state.get("_anchor_nonce", 0) + 1
+    script = (
+        "<script>(function () {"
+        "var w = window.parent || window, doc = w.document, tries = 0;"
+        f"var anchor = {anchor!r}; /* run {nonce} */"
+        "(function find() {"
+        "  var el = doc.getElementById(anchor);"
+        "  if (!el) { if (++tries < 30) setTimeout(find, 100); return; }"
+        "  var still = w.matchMedia('(prefers-reduced-motion: reduce)').matches;"
+        "  el.scrollIntoView({behavior: still ? 'auto' : 'smooth', block: 'start'});"
+        "})();"
+        "})();</script>"
+    )
+    with _scroll_box:
         st.html(script, unsafe_allow_javascript=True)
 
 
@@ -289,22 +335,34 @@ def _scroll_to_top() -> None:
 _screen = st.session_state.get("current_screen", "landing")
 _last   = st.session_state.get("_last_screen", "landing")
 
+# The hidden box for the scroll scripts is created on every run, filled or not. When it only
+# appeared on screen changes, everything below it moved up one place on the next run, and
+# Streamlit kept showing the old elements in their old places until that run ended (the scan
+# form stayed visible under the scan's progress, for instance).
+_scroll_box = st.container(key="scroll_reset")
+
 # Scroll to the top ONLY on a screen transition, never on same-screen reruns.
 if _screen != _last:
     # A pending "are you sure?" belongs to the screen it was asked on.
     st.session_state["_confirm_new_scan"] = None
     st.session_state["_confirm_purge"] = None
-    _scroll_to_top()
+    if not st.session_state.get("_scroll_anchor"):
+        _scroll_to_top()
     st.session_state["_last_screen"] = _screen
+
+# The header's How it works points at a section of the home page, not at a screen.
+if st.session_state.get("_scroll_anchor"):
+    _scroll_to_anchor(st.session_state.pop("_scroll_anchor"))
 
 # The design-token page is a development aid; outside test or dev mode it isn't reachable.
 if _screen == "foundation" and not (_offline or os.environ.get("CODEDOCAI_DEV") == "1"):
     _screen = "landing"
 
-from helpers import render_top_bar, show_queued_toasts
+from helpers import install_effects, render_top_bar, show_queued_toasts
 
 render_top_bar(_screen, offline=_offline)
 show_queued_toasts()
+install_effects()
 
 try:
     if _screen == "foundation":
@@ -321,8 +379,6 @@ try:
         render_qa()
     elif _screen == "export":
         render_export()
-    elif _screen == "architecture":
-        render_architecture()
     elif _screen == "login":
         render_login()
     elif _screen == "manager_dashboard":

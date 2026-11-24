@@ -13,7 +13,7 @@ SAMPLE = [
     "class Spider:",
     "    @staticmethod",
     "    def crawl_page(thread_name, page_url):",
-    '        """Crawl a page and queue its links."""',
+    '        """Crawl a single page."""',  # CodeT5's own draft in the sample run
     "        if page_url not in Spider.crawled:",
     "            Spider.gather_links(page_url)",
     "            Spider.crawled.add(page_url)",
@@ -99,7 +99,7 @@ export default function (component) {
       const cls = i === target && typed > 0 ? "line drafted" : "line"
       return `<span class="${cls}"><span class="no">${i + 1}</span>${highlightPython(text)}${caret}</span>`
     }).join("")
-    state.textContent = done ? "docstring drafted on this machine" : "CodeT5 drafting…"
+    state.textContent = done ? "drafted by our CodeT5 · no API call" : "CodeT5 drafting…"
     state.classList.toggle("done", done)
   }
 
@@ -112,13 +112,16 @@ export default function (component) {
   const indent = (lines[target] || "").search(/\\S/)
   let typed = indent
   draw(typed, false)
+  // The window fades in once the headline has typed out (CSS, about 1.6 s);
+  // typing starts half a second after that, timed from the hero's start.
+  const start = window.__codedocaiHeroStart || (window.__codedocaiHeroStart = performance.now())
   setTimeout(() => {
     pre._timer = setInterval(() => {
       typed += 1
       draw(typed, typed >= full)
       if (typed >= full) clearInterval(pre._timer)
-    }, 38)
-  }, 500)
+    }, 26)
+  }, Math.max(0, 2100 - (performance.now() - start)))
 }
 """
 

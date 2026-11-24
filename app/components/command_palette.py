@@ -213,7 +213,7 @@ def build_commands(current_screen: str) -> list[dict]:
     generated = bool(st.session_state.get("generation_complete"))
     screens = [
         ("landing", "Home", True),
-        ("architecture", "How it works", True),
+        ("how", "How it works", True),
         ("scan", "Scan", True),
         ("generation", "Generate", populated),
         ("docs", "Documentation", generated),

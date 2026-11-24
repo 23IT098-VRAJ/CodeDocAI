@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/License-MIT-22C55E?style=flat-square" alt="MIT License"/>
 </p>
 
-Paste a public GitHub URL or upload a `.zip` of a Python project. A CodeT5 model running on your own machine drafts every missing docstring and writes it back into a copy of your files. After that you can ask questions about the code in plain English, and every answer names the file and function it came from.
+Paste a public GitHub URL or upload a `.zip` of a Python project. CodeDocAI's own fine-tuned CodeT5 model, running inside the app with no API call, drafts every missing docstring and writes it back into a copy of your files. After that you can ask questions about the code in plain English, and every answer names the file and function it came from.
 
 ```diff
   def file_to_set(file_name):
@@ -34,9 +34,9 @@ That diff is real output, for a helper in [buckyroberts/Spider](https://github.c
 - [How a scan runs](#how-a-scan-runs)
 - [The five screens](#the-five-screens)
 - [What you download](#what-you-download)
-- [The local model](#the-local-model)
+- [The docstring model](#the-docstring-model)
 - [Answers you can check](#answers-you-can-check)
-- [What leaves your machine](#what-leaves-your-machine)
+- [What reaches the cloud model](#what-reaches-the-cloud-model)
 - [When the cloud says no](#when-the-cloud-says-no)
 - [Enterprise demo](#enterprise-demo)
 - [Quick start](#quick-start)
@@ -126,7 +126,7 @@ git apply docstrings.patch
 
 The writer in [`backend/writer.py`](backend/writer.py) re-parses every file it has changed and throws the change away if the result isn't valid Python. Code that already had a docstring is never touched.
 
-## The local model
+## The docstring model
 
 A `Salesforce/codet5-small` checkpoint, fine-tuned on Python function and docstring pairs. During data preparation the function signature was stripped from each target docstring, so the model can't score well by copying its input back.
 
@@ -147,7 +147,7 @@ Scores on a held-out test set of 10,268 samples:
 
 BLEU looks low because it rewards matching one reference word for word, and a function can be described correctly in many ways; ROUGE-L is the fairer number for this task.
 
-What that buys you in practice is a one-line summary per function, the kind of sentence you'd write as the first line of a docstring. It does not write `Args` and `Returns` sections. It was also trained on functions only, and when we tried it on classes it produced lines like "Create a new X", so classes are parsed, indexed and counted but their docstrings are left for a human.
+What that buys you in practice is a one-line summary per function, the kind of sentence you'd write as the first line of a docstring. It does not write `Args` and `Returns` sections. Drafting covers functions and methods. Classes are parsed, indexed and counted, and their docstrings are left to the people who know what each class is for.
 
 On a CPU, drafting measured under 0.2 seconds per function. Batching gave identical output about 1.6 times faster than drafting one function at a time.
 
@@ -164,13 +164,13 @@ When you ask a question:
 
 Step 4 is the part that matters. Because the citation text never comes from the model, an answer can't cite a function that wasn't retrieved. Ask the same question twice and the second answer comes from a per-session cache.
 
-## What leaves your machine
+## What reaches the cloud model
 
-| Stays local | Goes to the cloud model |
+| Stays inside CodeDocAI | Goes to the cloud model |
 |---|---|
 | Cloning, parsing, docstring drafting | An outline of each file (names, signatures, first docstring lines) for the overview |
 | Writing docstrings back, the patch, coverage | The four retrieved entries closest to each question |
-| Embeddings and the vector index | Function source, only for functions the local model couldn't draft |
+| Embeddings and the vector index | Function source, only for functions CodeT5 couldn't draft |
 
 Around that boundary sit a few controls, all in [`backend/security.py`](backend/security.py) and [`backend/repo/loader.py`](backend/repo/loader.py):
 
@@ -204,7 +204,7 @@ Gemini keys run `gemini-3.6-flash`; Groq keys run `openai/gpt-oss-120b`. A key t
 
 The router in [`backend/resilience/rate_limiter.py`](backend/resilience/rate_limiter.py) only retries errors that mean "this key is busy or gone". The patterns are matched as whole phrases, because a bare `rate` would also match "failed to gene**rate**" and bench a healthy key. Anything else, a bad prompt or a wrong key for instance, is raised straight away without touching the cooldown state.
 
-With no key configured at all, docstrings are still drafted locally, and the overview and Q&A tell you a key is missing.
+With no key configured at all, docstrings are still drafted by CodeT5, and the overview and Q&A tell you a key is missing.
 
 ## Enterprise demo
 
@@ -321,7 +321,7 @@ Better to read these here than to discover them halfway through a demo.
 
 - Python only. The parser is Python's own `ast`, and a file with a syntax error is skipped.
 - Docstrings are one-line summaries. No parameter or return sections.
-- Class docstrings aren't drafted, for the reason given under [The local model](#the-local-model).
+- Class docstrings aren't drafted; drafting covers functions and methods (see [The docstring model](#the-docstring-model)).
 - Public GitHub repositories only; there's no token support for private ones. A `.zip` upload gets around that.
 - Tests, `__init__.py`, virtual environments and hidden folders are skipped on purpose.
 - Q&A sees four entries per question. If the answer depends on code spread across many files, it can miss part of it.

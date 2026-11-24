@@ -82,7 +82,7 @@ def coverage_markdown(coverage: dict) -> str:
         f"- Documented after the scan: {coverage.get('functions_after', 0)} ({pct(coverage.get('functions_after_pct'))})",
         f"- Docstrings drafted: {coverage.get('docstrings_drafted', 0)}",
         f"- Classes with a docstring: {coverage.get('classes_documented', 0)} of {coverage.get('classes', 0)} "
-        "(CodeDocAI doesn’t draft class docstrings)",
+        "(CodeDocAI drafts functions and methods, not classes)",
         f"- Files with a module docstring: {coverage.get('files_with_module_docstring', 0)} of {coverage.get('file_count', 0)}",
         "",
         "## By file",

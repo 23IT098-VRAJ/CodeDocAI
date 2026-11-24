@@ -102,7 +102,7 @@ def _render_card() -> None:
                 else:
                     # Back to where they were; a visitor who had not started yet goes to the scan step.
                     target = _return_screen()
-                    st.session_state["current_screen"] = "scan" if target in ("landing", "architecture") else target
+                    st.session_state["current_screen"] = "scan" if target == "landing" else target
                     log_audit(
                         action="AUTH",
                         details=f"{user_entry['title']} '{username}' signed in.",

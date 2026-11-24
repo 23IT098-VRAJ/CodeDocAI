@@ -122,7 +122,7 @@ def new_scan_button(label: str, key: str, **button_kwargs) -> None:
 # ---------------------------------------------------------------------------
 # Stats and toasts
 # ---------------------------------------------------------------------------
-def render_stats(items: list[tuple[str, object]], key: str | None = None) -> None:
+def render_stats(items: list[tuple[str, object]], key: str | None = None, count_up: bool = False) -> None:
     """
     One row of figures in the shared stat style: the value in tabular mono, the
     label under it in muted sentence case. items holds (label, value) pairs; a
@@ -138,12 +138,106 @@ def render_stats(items: list[tuple[str, object]], key: str | None = None) -> Non
             f'<span class="stat-label">{_html.escape(label)}{note}</span>'
             '</div>'
         )
-    html_text = f'<div class="stat-row" role="list">{"".join(cells)}</div>'.replace('<div class="stat">', '<div class="stat" role="listitem">')
+    row_class = "stat-row count-up" if count_up else "stat-row"
+    html_text = f'<div class="{row_class}" role="list">{"".join(cells)}</div>'.replace('<div class="stat">', '<div class="stat" role="listitem">')
     if key:
         with st.container(key=key):
             st.markdown(html_text, unsafe_allow_html=True)
     else:
         st.markdown(html_text, unsafe_allow_html=True)
+
+
+# One page-level script for the effects that need JavaScript: count-up figures and the
+# spotlight that follows the pointer across cards. It installs itself once per page.
+_FX_SCRIPT = r"""
+<script>(function () {
+  var w = window.parent || window, doc = w.document;
+  if (w.__codedocaiFx) { w.__codedocaiFx.scan(); return; }
+  var still = w.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // The index loader's ring fill animates as a percentage (see styles.py, .ixl-ring).
+  // \x3c and \x3e are angle brackets: written literally, the tag-like syntax string got the whole
+  // script stripped on its way into the page (so do not write them literally anywhere in here).
+  try { w.CSS.registerProperty({ name: '--ixl-p', syntax: '\x3cpercentage\x3e', inherits: false, initialValue: '0%' }); } catch (e) {}
+  function countUp(el) {
+    if (el.dataset.counted) return;
+    el.dataset.counted = '1';
+    var text = el.textContent, parts = text.split(/(\d+)/);
+    if (still || parts.length < 2) return;
+    var start = null, ms = 700;
+    function frame(t) {
+      if (start === null) start = t;
+      var k = Math.min((t - start) / ms, 1), e = 1 - Math.pow(1 - k, 3);
+      el.textContent = parts.map(function (p) { return /^\d+$/.test(p) ? String(Math.round(parseInt(p, 10) * e)) : p; }).join('');
+      if (k < 1) w.requestAnimationFrame(frame); else el.textContent = text;
+    }
+    w.requestAnimationFrame(frame);
+  }
+  var REVEAL = '.home-reveal, .st-key-tryit, .st-key-how_tour, .closing-section, .st-key-closing_cta';
+  var seen = new w.IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (!entry.isIntersecting) return;
+      // On the landing page, whatever is already on screen waits for the hero to finish.
+      var wait = doc.querySelector('.hero-word') ? Math.max(0, 3500 - (w.performance.now() - (w.__codedocaiHeroStart || 0))) : 0;
+      var stagger = parseInt(entry.target.style.getPropertyValue('--reveal-delay'), 10) || 0;
+      entry.target.style.setProperty('--reveal-delay', (wait + stagger) + 'ms');
+      entry.target.classList.add('revealed');
+      // Figures inside a revealed section count up once the section has faded in.
+      entry.target.querySelectorAll('.count-up .stat-value').forEach(function (el) {
+        w.setTimeout(function () { countUp(el); }, wait + stagger + 200);
+      });
+      seen.unobserve(entry.target);
+    });
+  }, { threshold: 0.15 });
+  function reveal() {
+    if (still) return;
+    if (doc.querySelector('.hero-word') && !w.__codedocaiHeroStart) w.__codedocaiHeroStart = w.performance.now();
+    if (!doc.querySelector('.hero-word')) w.__codedocaiHeroStart = 0;
+    doc.documentElement.classList.add('fx-reveal');
+    doc.querySelectorAll(REVEAL).forEach(function (el, i) {
+      if (el.dataset.revealWatched) return;
+      el.dataset.revealWatched = '1';
+      var siblings = el.parentElement ? [].indexOf.call(el.parentElement.children, el) : 0;
+      el.style.setProperty('--reveal-delay', Math.min(siblings, 4) * 90 + 'ms');
+      seen.observe(el);
+    });
+  }
+  // Live logs (the Generate screen's Details) follow the newest line, unless the
+  // reader has scrolled up to look at something; scrolling back down resumes it.
+  function pinLogs() {
+    doc.querySelectorAll('.st-key-compact_gen_details [data-testid="stCode"] *, .st-key-scan_status [data-testid="stExpanderDetails"]').forEach(function (el) {
+      if (el.scrollHeight <= el.clientHeight + 2) return;
+      if (!el.dataset.pinWatched) {
+        el.dataset.pinWatched = '1';
+        el.addEventListener('scroll', function () {
+          el.dataset.pinned = el.scrollHeight - el.scrollTop - el.clientHeight < 40 ? '1' : '0';
+        }, { passive: true });
+      }
+      if (el.dataset.pinned !== '0') el.scrollTop = el.scrollHeight;
+    });
+  }
+  function scan() {
+    pinLogs();
+    doc.querySelectorAll('.count-up .stat-value').forEach(function (el) { if (still || !el.closest('.home-reveal')) countUp(el); });
+    reveal();
+  }
+  doc.addEventListener('pointermove', function (ev) {
+    var card = ev.target.closest && ev.target.closest('.spotlight, [class*="st-key-docs_file_"], .home-card');
+    if (!card) return;
+    var r = card.getBoundingClientRect();
+    card.style.setProperty('--spot-x', (ev.clientX - r.left) + 'px');
+    card.style.setProperty('--spot-y', (ev.clientY - r.top) + 'px');
+  }, { passive: true });
+  new w.MutationObserver(scan).observe(doc.body, { childList: true, subtree: true });
+  w.__codedocaiFx = { scan: scan };
+  scan();
+})();</script>
+"""
+
+
+def install_effects() -> None:
+    """Mounts the page-level effects script in a hidden container (it takes no space)."""
+    with st.container(key="fx_scripts"):
+        st.html(_FX_SCRIPT, unsafe_allow_javascript=True)
 
 
 def skeleton(lines: int = 3, *, key: str | None = None):

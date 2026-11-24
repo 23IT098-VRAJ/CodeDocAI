@@ -112,6 +112,11 @@ def validate_repository(repo_path: str | Path) -> list[str]:
         if _is_inside(f, path) and f.is_file() and not _is_skipped(f.relative_to(path))
     )
 
+    if not py_files:
+        raise RepoValidationError(
+            "This repository has no Python files to document. Tests, virtual environments and "
+            "hidden folders are skipped, so check the code isn't only in those."
+        )
     if len(py_files) > MAX_PY_FILES:
         raise RepoValidationError(
             f"Repository contains {len(py_files)} Python files, exceeding the {MAX_PY_FILES} limit."

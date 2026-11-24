@@ -114,6 +114,15 @@ button:focus-visible { outline: 2px solid var(--accent-amber, #E8B339); outline-
   padding: 4px 10px;
 }
 .badge::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+.model {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 0.75rem;
+  color: var(--text-muted, #A59C8A);
+  padding: 4px 6px;
+}
+.model::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: var(--color-success, #4CAF50); }
+.model.cloud::before { background: var(--accent-amber, #E8B339); }
+@media (max-width: 1100px) { .model { display: none; } }
 .kbd {
   font-family: var(--font-mono, var(--st-code-font));
   font-size: 0.75rem;
@@ -181,6 +190,13 @@ export default function (component) {
 
   const right = root.querySelector(".right")
   right.replaceChildren()
+  if (data.model) {
+    const model = make("span", "model " + data.model, data.model === "local" ? "CodeT5 ready" : "Cloud drafting")
+      model.title = data.model === "local"
+        ? "CodeDocAI's own CodeT5 model is loaded; docstrings are drafted without any API call."
+        : "CodeDocAI's own model didn't load; docstrings are drafted by the cloud fallback."
+    right.append(model)
+  }
   if (data.offline) {
     const badge = make("span", "badge", "Offline")
     badge.title = "Test mode: cloud answers are placeholders and nothing calls an API."
@@ -196,7 +212,13 @@ export default function (component) {
   if (data.show_how) {
     const how = make("button", "link", "How it works")
     how.type = "button"
-    how.onclick = () => go("architecture")
+    // On the home page the pipeline is already there: scroll to it. Elsewhere, go home first.
+    how.onclick = () => {
+      const target = document.getElementById("how-it-works")
+      if (!target) return go("how")
+      const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      target.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" })
+    }
     right.append(how)
   }
   if (data.user) {
@@ -222,7 +244,7 @@ export default function (component) {
 
 _TOPBAR = st.components.v2.component("codedocai_topbar", html=_HTML, css=_CSS, js=_JS)
 
-SCREENS = {"landing", "scan", "generation", "docs", "qa", "export", "architecture", "manager_dashboard"}
+SCREENS = {"landing", "scan", "generation", "docs", "qa", "export", "manager_dashboard"}
 
 
 def navigate(target: str) -> None:
@@ -237,6 +259,10 @@ def navigate(target: str) -> None:
         # Remember where the visitor was, so signing in (or backing out) returns them there.
         state["_return_screen"] = state.get("current_screen", "landing")
         state["current_screen"] = "login"
+    elif target == "how":
+        # How it works is a section of the home page; app.py scrolls to it after the switch.
+        state["current_screen"] = "landing"
+        state["_scroll_anchor"] = "how-it-works"
     elif target in SCREENS:
         state["current_screen"] = target
 
@@ -278,7 +304,8 @@ def render(current_screen: str, offline: str | None = None, on_nav: Callable[[],
     data = {
         "steps": step_states(current_screen) if in_workflow else [],
         "offline": bool(offline),
-        "show_how": not in_workflow and current_screen != "architecture",
+        "model": ("local" if st.session_state.get("ai_engine") else "cloud") if "ai_engine" in st.session_state else None,
+        "show_how": not in_workflow,
         "user": st.session_state.get("username") if st.session_state.get("authenticated") else None,
         "manager": st.session_state.get("authenticated") and st.session_state.get("role") == "manager"
                    and current_screen != "manager_dashboard",

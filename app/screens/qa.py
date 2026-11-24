@@ -140,10 +140,27 @@ def _citation_pills(citation: str | None) -> str:
     return f'<div class="qa-citations" aria-label="Sources">{pills}</div>'
 
 
+def without_markers(text: str) -> str:
+    """The answer without the [S1]-style block numbers the model cites; the source pills show them."""
+    text = _re.sub(r"\s*\((?:\s*\[S\d+\]\s*,?)+\)", "", text)
+    return _re.sub(r"\s*\[S\d+\]", "", text)
+
+
 def _render_answer(content: str, citation: str | None, key: str) -> None:
-    st.markdown(content)
+    st.markdown(without_markers(content))
     if citation:
         copy_text.pills([part.strip() for part in citation.split("|") if part.strip()], key=key)
+
+
+def _stream_words(text: str):
+    """Yields the answer a few words at a time; the whole stream takes at most about a second."""
+    import time
+
+    words = text.split(" ")
+    delay = min(0.03, 1.0 / max(len(words), 1))
+    for i, word in enumerate(words):
+        yield word + (" " if i < len(words) - 1 else "")
+        time.sleep(delay)
 
 
 def _render_history(history: list) -> None:
@@ -156,12 +173,32 @@ def _render_history(history: list) -> None:
                 _render_answer(message.get("content", ""), message.get("citation"), key=f"qa_cite_{index}")
 
 
-def _starter_questions(scan_results: list) -> list[str]:
-    largest_file = max(scan_results, key=lambda row: row.get("functions", 0)).get("path") if scan_results else None
-    questions = ["What is this project about?"]
-    if largest_file:
-        questions.append(f"What does {largest_file} do?")
-    return questions
+# The same four for every repository: each works on any codebase and covers what newcomers ask first.
+STARTER_QUESTIONS = [
+    "What is this project about?",
+    "How do the main modules fit together?",
+    "Where does the program start running?",
+    "How are errors handled?",
+]
+
+
+def _how_strip(results: dict, file_count: int) -> str:
+    """How an answer is put together, as three steps across the page."""
+    functions = results.get("functions") or []
+    defs = sum(1 for fn in functions if fn.get("kind") != "class")
+    overview = " and the overview" if results.get("overview_status") == "ok" else ""
+    steps = (
+        ("Match", f"Your question is compared with {defs} functions, {file_count} file "
+                  f"summar{'ies' if file_count != 1 else 'y'}{overview}."),
+        ("Answer", "The four closest go to Gemini, with Groq as backup, and it answers from those only."),
+        ("Cite", "Each answer names the functions it used, so you can open and check them."),
+    )
+    items = "".join(
+        f'<li class="how-step"><span class="how-num">{i}</span><span class="how-name">{name}</span>'
+        f'<span class="how-text">{_html.escape(text)}</span></li>'
+        for i, (name, text) in enumerate(steps, start=1)
+    )
+    return f'<h2 class="qa-side-h">How an answer is built</h2><ol class="how-strip">{items}</ol>'
 
 
 def render_qa() -> None:
@@ -182,12 +219,11 @@ def render_qa() -> None:
     with st.container(horizontal=True, vertical_alignment="center", gap="small", key="qa_meta"):
         st.markdown(
             f'<span class="vector-status-bar"><span class="vector-active-dot" aria-hidden="true">●</span>'
-            f'{total_funcs} functions indexed from {len(scan_results)} files</span>',
+            f'{total_funcs} functions indexed from {len(scan_results)} files</span>'
+            '<span class="qa-meta-note">Each answer reads the four closest matches</span>',
             unsafe_allow_html=True, width="content",
-            help="Each answer uses the four closest matches, so it can miss code elsewhere in the repo.",
         )
-        st.space("stretch")
-        new_scan_button("New scan", key="qa_new_scan_bottom", type="tertiary", icon=":material/refresh:")
+        new_scan_button("New scan", key="qa_new_scan_bottom", type="secondary", icon=":material/refresh:")
 
     _render_history(history)
 
@@ -197,10 +233,19 @@ def render_qa() -> None:
     chip_question = None
     chips_slot = st.empty()
     if not history:
-        with chips_slot.container(horizontal=True, gap="small", key="qa_chips"):
-            for i, question in enumerate(_starter_questions(scan_results), start=1):
-                if st.button(question, key=f"qa_chip_{i}", type="secondary", icon=":material/arrow_outward:"):
-                    chip_question = question
+        results = st.session_state.get("pipeline_results") or {}
+        with chips_slot.container(key="qa_empty"):
+            st.html('<h2 class="qa-side-h">Start with a question</h2>')
+            with st.container(key="qa_chips"):
+                columns = st.columns(len(STARTER_QUESTIONS), gap="small")
+                for column, (i, starter) in zip(columns, enumerate(STARTER_QUESTIONS, start=1), strict=True):
+                    with column:
+                        if st.button(starter, key=f"qa_chip_{i}", type="secondary", width="stretch",
+                                     icon=":material/arrow_outward:"):
+                            chip_question = starter
+            st.html('<p class="qa-hint">Or type your own below. A short follow-up such as “and where is it '
+                    'called?” is read together with your previous question.</p>')
+            st.html(_how_strip(results, len(scan_results)))
 
     question = (prompt or chip_question or "").strip()
     if not question:
@@ -219,4 +264,7 @@ def render_qa() -> None:
         status.update(label="Searched the index", state="complete")
         loading.empty()
         answer = st.session_state["qa_chat_history"][-1]
-        _render_answer(answer.get("content", ""), answer.get("citation"), key="qa_cite_live")
+        st.write_stream(_stream_words(without_markers(answer.get("content", ""))))
+        citation = answer.get("citation")
+        if citation:
+            copy_text.pills([part.strip() for part in citation.split("|") if part.strip()], key="qa_cite_live")

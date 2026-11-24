@@ -3,13 +3,17 @@ screens/generation.py -- CodeDocAI
 Generation / progress screen renderer (Phase 6 Real Pipeline Integration).
 """
 
+import html
 import logging
+import time
 
 import streamlit as st
 
-from backend.pipeline import generate_overview, index_overview, run_pipeline, save_results_cache
+from backend.pipeline import MAX_LOCAL_DRAFTS, generate_overview, index_overview, run_pipeline, save_results_cache
 from backend.repo.loader import cleanup_repo
-from helpers import audit_event, page_heading, render_stats, session_collection_name, skeleton
+from components import overview_loader
+from components.index_loader import index_loader_html
+from helpers import audit_event, page_heading, render_stats, session_collection_name
 
 logger = logging.getLogger(__name__)
 
@@ -27,15 +31,117 @@ def completion_summary(results: dict) -> str:
     )
 
 
+def _repo_label() -> str:
+    url = (st.session_state.get("scan_github_url") or "").strip().rstrip("/")
+    if url.startswith("http") and url.count("/") >= 4:
+        return "/".join(url.removesuffix(".git").split("/")[-2:])
+    return "your upload"
+
+
+def _coverage_card(files: list[dict]) -> str:
+    rows = []
+    for row in sorted(files, key=lambda r: r.get("functions", 0), reverse=True)[:8]:
+        total = row.get("functions", 0)
+        if not total:
+            continue
+        before, after = row.get("functions_before", 0), row.get("functions_after", 0)
+        rows.append(
+            '<li class="cov-row">'
+            f'<span class="cov-path">{html.escape(row.get("path", ""))}</span>'
+            f'<span class="cov-bar" aria-hidden="true"><i class="after" style="width:{after / total:.0%}"></i>'
+            f'<i class="before" style="width:{before / total:.0%}"></i></span>'
+            f'<span class="cov-num">{before} → {after} of {total}</span>'
+            '</li>'
+        )
+    more = len([r for r in files if r.get("functions")]) - len(rows)
+    tail = f'<p class="done-note">and {more} more file{"s" if more != 1 else ""} in Docs</p>' if more > 0 else ""
+    return (
+        '<section class="done-card"><h2 class="done-h">Coverage by file</h2>'
+        '<p class="done-legend"><i class="before"></i>before <i class="after"></i>after</p>'
+        f'<ul class="cov-list">{"".join(rows)}</ul>{tail}</section>'
+    )
+
+
+def _found_card(coverage: dict, functions: list[dict]) -> str:
+    """What the scan found: how the functions split between documented, drafted and still missing."""
+    total = coverage.get("functions", 0)
+    if not total:
+        return ""
+    before = coverage.get("functions_before", 0)
+    drafted = coverage.get("docstrings_drafted", 0)
+    missing = max(total - coverage.get("functions_after", 0), 0)
+    segments = "".join(
+        f'<i class="{cls}" style="width:{count / total:.1%}"></i>'
+        for cls, count in (("before", before), ("drafted", drafted), ("missing", missing)) if count
+    )
+    kinds = {kind: sum(1 for fn in functions if fn.get("kind") == kind) for kind in ("function", "method", "class")}
+    by_cloud = sum(1 for fn in functions if fn.get("doc_status") == "cloud")
+    files = coverage.get("file_count", 0)
+    facts = [
+        (kinds["function"], "top-level functions"),
+        (kinds["method"], "methods inside classes"),
+        (kinds["class"], "classes (drafting covers their methods)"),
+        (f"{coverage.get('files_with_module_docstring', 0)} / {files}", "files with a module docstring"),
+        (drafted - by_cloud, "docstrings written by our CodeT5"),
+    ]
+    if by_cloud:
+        facts.append((by_cloud, "written by the cloud fallback"))
+    rows = "".join(f"<li><b>{html.escape(str(value))}</b>{html.escape(label)}</li>" for value, label in facts)
+    legend = (f'<p class="done-legend"><i class="before"></i>documented before {before}'
+              f'<i class="drafted"></i>drafted now {drafted}'
+              + (f'<i class="missing"></i>still missing {missing}' if missing else "") + "</p>")
+    return (
+        '<section class="done-card"><h2 class="done-h">What the scan found</h2>'
+        f'<div class="split-bar" aria-hidden="true">{segments}</div>{legend}'
+        f'<ul class="found-list">{rows}</ul></section>'
+    )
+
+
+def _longest_card(functions: list[dict], limit: int = 5) -> str:
+    """The biggest functions that now have a docstring: where a reader needed one most."""
+    drafted = sorted(
+        (fn for fn in functions if fn.get("doc_status") in ("local", "cloud") and fn.get("loc")),
+        key=lambda fn: fn.get("loc", 0), reverse=True,
+    )[:limit]
+    if not drafted:
+        return ""
+    longest = drafted[0].get("loc", 1)
+    rows = "".join(
+        '<li class="long-row">'
+        f'<span class="long-name">{html.escape(fn.get("name", ""))}</span>'
+        f'<span class="long-file">{html.escape(fn.get("file", ""))}</span>'
+        f'<span class="long-bar" aria-hidden="true"><i style="width:{fn.get("loc", 0) / longest:.0%}"></i></span>'
+        f'<span class="long-loc">{fn.get("loc", 0)} lines</span>'
+        '</li>'
+        for fn in drafted
+    )
+    return ('<section class="done-card done-wide"><h2 class="done-h">Longest functions, now documented</h2>'
+            f'<ul class="long-list">{rows}</ul></section>')
+
+
 def _render_complete(results: dict) -> None:
     coverage = results.get("coverage") or {}
-    page_heading("Documentation ready")
+    timing = st.session_state.get("generation_timing") or {}
+    functions = results.get("functions") or []
+    files = coverage.get("file_count") or len({fn.get("file") for fn in functions})
+    subtitle = f"{_repo_label()} · {files} file{'s' if files != 1 else ''}"
+    if timing.get("total"):
+        subtitle += f" · finished in {timing['total']:.0f} s"
+    page_heading("Documentation ready", subtitle)
+
     if coverage.get("functions"):
-        render_stats([
-            ("Coverage", f"{coverage.get('functions_before_pct')}% \u2192 {coverage.get('functions_after_pct')}%"),
+        stats = [
+            ("Coverage", f"{coverage.get('functions_before_pct')}% → {coverage.get('functions_after_pct')}%"),
             ("Docstrings drafted", coverage.get("docstrings_drafted", 0)),
-            ("Overview", "Written" if results.get("overview_status") == "ok" else "Missing"),
-        ], key="gen_stats")
+            ("Functions scanned", coverage.get("functions", 0)),
+        ]
+        if timing.get("draft") and timing.get("drafted"):
+            stats.append(("Per docstring", f"{timing['draft'] / timing['drafted']:.2f} s"))
+        stats.append(("Overview", "Written" if results.get("overview_status") == "ok" else "Missing"))
+        render_stats(stats, key="gen_stats", count_up=True)
+        left = coverage.get("functions", 0) - coverage.get("functions_after", 0)
+        if coverage.get("docstrings_drafted", 0) >= MAX_LOCAL_DRAFTS and left > 0:
+            st.caption(f"Drafting stops at {MAX_LOCAL_DRAFTS:,} functions per scan; {left:,} still have no docstring.")
     else:
         st.markdown(f'<p class="page-sub">{completion_summary(results)}</p>', unsafe_allow_html=True)
     with st.container(horizontal=True, gap="small", key="gen_done_actions"):
@@ -45,6 +151,15 @@ def _render_complete(results: dict) -> None:
         if st.button("Ask a question", key="cta_gen_ask", type="secondary"):
             st.session_state["current_screen"] = "qa"
             st.rerun()
+
+    if coverage.get("functions"):
+        st.html(
+            '<div class="done-grid">'
+            + _coverage_card(coverage.get("files") or [])
+            + _found_card(coverage, functions)
+            + '</div>'
+            + _longest_card(functions)
+        )
 
 
 def _render_partial(results: dict) -> None:
@@ -97,6 +212,8 @@ def progress_line(event: dict) -> str | None:
     """One line of the live log for a pipeline event, or None for events that aren’t logged."""
     kind = event.get("type")
     if kind == "progress":
+        if event.get("function") == "Repository":
+            return None  # the overview loader replaces the log at this point
         return f"{event.get('function', 'pipeline')}: {event.get('status', 'working')}"
     if kind == "result":
         if event.get("docstring") == "(Original docstring retained)":
@@ -123,27 +240,36 @@ def next_phase(phase: str, drafted: int, event: dict) -> tuple[str, int]:
         return "overview", drafted
     if kind == "done":
         return "done", drafted
+    if kind == "progress" and source == "Index" and "total" in event:
+        return "index", drafted  # the batched embedding after drafting (the first "Index" line is a warm-up)
     if phase == "draft" and kind == "progress" and source == "ChromaDB":
         return "index", drafted
     return phase, drafted
 
 
-def progress_value(phase: str, drafted: int, total: int) -> float:
+def progress_value(phase: str, drafted: int, total: int, indexed: tuple[int, int] = (0, 0)) -> float:
     if phase == "done":
         return 1.0
     if phase == "draft":
         return 0.15 + 0.6 * (min(drafted, total) / total if total else 1)
-    return {"clone": 0.0, "parse": 0.08, "index": 0.8, "overview": 0.88}.get(phase, 0.0)
+    if phase == "index" and indexed[1]:
+        return 0.75 + 0.13 * indexed[0] / indexed[1]
+    return {"clone": 0.0, "parse": 0.08, "index": 0.75, "overview": 0.88}.get(phase, 0.0)
 
 
-def phase_label(phase: str, drafted: int, total: int) -> str:
+def phase_label(phase: str, drafted: int, total: int, indexed: tuple[int, int] = (0, 0)) -> str:
     return {
         "parse": "Parsing files",
         "draft": f"Drafting docstrings {min(drafted, total)}/{total}" if total else "Drafting docstrings",
-        "index": "Indexing for questions",
+        "index": f"Indexing for questions {indexed[0]}/{indexed[1]}" if indexed[1] else "Indexing for questions",
         "overview": "Writing the overview",
         "done": "Done",
     }.get(phase, "Working")
+
+
+_CHECK = ('<svg class="gen-check" viewBox="0 0 16 16" aria-hidden="true">'
+          '<path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" stroke-width="2" '
+          'stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr-only">done</span>')
 
 
 def step_tracker(phase: str, drafted: int, total: int) -> str:
@@ -153,9 +279,10 @@ def step_tracker(phase: str, drafted: int, total: int) -> str:
     for index, (key, label) in enumerate(STEPS):
         state = "done" if index < current else "current" if index == current else "waiting"
         text = f"{label} {min(drafted, total)}/{total}" if key == "draft" and total else label
-        marker = "✓" if state == "done" else str(index + 1)
+        marker = _CHECK if state == "done" else str(index + 1)
         aria = ' aria-current="step"' if state == "current" else ""
-        items.append(f'<li class="gen-step gen-step-{state}"{aria}><span class="gen-step-marker">{marker}</span>{text}</li>')
+        latest = " gen-step-latest" if state == "done" and index == current - 1 else ""
+        items.append(f'<li class="gen-step gen-step-{state}{latest}"{aria}><span class="gen-step-marker">{marker}</span>{text}</li>')
     return f'<ol class="gen-steps">{"".join(items)}</ol>'
 
 
@@ -165,7 +292,10 @@ def render_generation() -> None:
         '<style>'
         'div.element-container:has(#ghost-scan-results), '
         'div.element-container:has(#ghost-scan-estimate), '
-        '.st-key-scan_source, .st-key-cta_generate_docs, .st-key-cta_scan_view_docs '
+        '.st-key-scan_source, .st-key-cta_generate_docs, .st-key-cta_scan_view_docs, '
+        # Anything still marked stale here is left over from the scan screen (this run is long,
+        # so Streamlit would keep showing it until generation ends, e.g. the "Skipped:" note).
+        '[data-stale="true"] '
         '{ display: none !important; height: 0 !important; opacity: 0 !important; margin: 0 !important; padding: 0 !important; }'
         '</style>'
     )
@@ -193,18 +323,26 @@ def render_generation() -> None:
     total_to_draft = (st.session_state.get("scan_summary") or {}).get("missing_count", 0)
     tracker_slot = st.empty()
     progress_slot = st.empty()
-    with st.expander("Details", type="compact", key="compact_gen_details"):
+    details_slot = st.empty()
+    with details_slot.container(), st.expander("Details", expanded=True, type="compact", key="compact_gen_details"):
         log_slot = st.empty()
-    loading = skeleton(6)
     log_lines = []
+    loader_started = None  # set once the overview loader replaces the details panel
+    run_started, draft_started, draft_seconds = time.monotonic(), None, None
+    indexed = (0, 0)  # entries embedded so far, of how many
+    index_started, index_pct = None, 0.0  # when the index loader took over, and its last percentage
     finished = False
     phase, drafted = "parse", 0
     st.session_state["qa_answer_cache"] = {}  # answers from a previous index no longer apply
 
     def show() -> None:
         tracker_slot.markdown(step_tracker(phase, drafted, total_to_draft), unsafe_allow_html=True)
-        progress_slot.progress(progress_value(phase, drafted, total_to_draft), text=phase_label(phase, drafted, total_to_draft))
-        log_slot.code("\n".join(log_lines[-12:]) or "Starting", language="plaintext")
+        # Only Parse keeps a label: Draft's count is already in the step tracker above, and Index
+        # and Overview have their own loading screen with the same words in large type.
+        label = phase_label(phase, drafted, total_to_draft, indexed) if phase == "parse" else None
+        progress_slot.progress(progress_value(phase, drafted, total_to_draft, indexed), text=label)
+        if loader_started is None and index_started is None:
+            log_slot.code("\n".join(log_lines) or "Starting", language="plaintext", height=344)  # 15 lines of 20.8 px + 32 px padding
 
     show()
     events = run_pipeline(
@@ -215,6 +353,23 @@ def render_generation() -> None:
     for event in events:
         e_type = event.get("type")
         phase, drafted = next_phase(phase, drafted, event)
+        if phase == "draft" and draft_started is None:
+            draft_started = time.monotonic()
+        # Drafting ends where indexing starts; the time per docstring covers the model's work only.
+        if phase in ("index", "overview", "done") and draft_started is not None and draft_seconds is None:
+            draft_seconds = time.monotonic() - draft_started
+        if e_type == "progress" and event.get("function") == "Index" and "total" in event:
+            indexed = (event.get("done", 0), event["total"])
+            # Drafting is over: the details panel becomes the index loader, redrawn per batch.
+            if index_started is None:
+                index_started = time.monotonic()
+            with details_slot.container():
+                st.html(index_loader_html(indexed[0], indexed[1], index_pct, time.monotonic() - index_started))
+            index_pct = 100 * indexed[0] / indexed[1] if indexed[1] else 100.0
+        if loader_started is None and e_type == "progress" and event.get("function") == "Repository":
+            # The overview is one cloud request that can take a while: show what is happening.
+            with details_slot.container():
+                loader_started = overview_loader.render(repo_source.get("py_files", []))
 
         line = progress_line(event)
         if line:
@@ -237,8 +392,11 @@ def render_generation() -> None:
             break
         show()
 
-    loading.empty()
     if finished:
+        total_seconds = time.monotonic() - run_started
+        if loader_started is not None:
+            overview_loader.wait_for_cycle_end(loader_started)  # never cut the animation mid-loop
+        st.session_state["generation_timing"] = {"total": total_seconds, "draft": draft_seconds, "drafted": drafted}
         st.session_state["generation_complete"] = True
         results = st.session_state.get("pipeline_results") or {}
         coverage = results.get("coverage") or {}

@@ -53,6 +53,7 @@ LOCAL_BATCH_SIZE = 8
 # At most this many docstrings are drafted per scan (roughly 3-5 minutes on a CPU), so a huge
 # repository can't hold the screen for an hour. The rest stay missing; nothing extra goes to the cloud.
 MAX_LOCAL_DRAFTS = 1000
+INDEX_BATCH = 96  # entries embedded per call; small enough to report progress often
 
 # Long functions get extra index entries for the rest of their source: the embedding model only
 # reads about the first 256 tokens of an entry, so code further down was invisible to search.
@@ -360,10 +361,20 @@ def run_pipeline(
     coverage = build_coverage(files)
 
     # --- 5. VECTOR DATABASE INDEXING (functions, classes + per-file summaries) ---
+    # Embedded in batches with a progress event after each: on a big repository this step
+    # takes a while, and one silent call made the screen look stuck after drafting.
     rag_documents, rag_metadatas, rag_ids = _build_index_entries(files)
     if rag_documents:
+        total = len(rag_documents)
+        yield {"type": "progress", "function": "Index", "status": f"embedding {total} entries for questions",
+               "done": 0, "total": total}
         try:
-            add_documents(documents=rag_documents, metadatas=rag_metadatas, ids=rag_ids, collection_name=collection_name)
+            for start in range(0, total, INDEX_BATCH):
+                end = min(start + INDEX_BATCH, total)
+                add_documents(documents=rag_documents[start:end], metadatas=rag_metadatas[start:end],
+                              ids=rag_ids[start:end], collection_name=collection_name)
+                yield {"type": "progress", "function": "Index", "status": f"embedded {end} of {total}",
+                       "done": end, "total": total}
         except Exception as error:  # noqa: BLE001 - the docs are still usable without the index
             yield {"type": "progress", "function": "ChromaDB", "status": f"Vector indexing warning: {error}"}
 

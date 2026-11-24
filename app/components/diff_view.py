@@ -75,6 +75,14 @@ td.num {
 td.sign { width: 1%; padding: 0 4px 0 8px; user-select: none; color: var(--text-muted, #A59C8A); }
 td.code { color: var(--text-primary, #F0EAD9); width: 100%; }
 tr.add { background: rgba(76, 175, 80, 0.10); }
+@media (prefers-reduced-motion: no-preference) {
+  .fresh tr.add { animation: sweep 900ms cubic-bezier(0.2, 0, 0, 1) both; }
+  .fresh tr.add:nth-of-type(n) { animation-delay: calc(var(--row, 0) * 40ms); }
+}
+@keyframes sweep {
+  from { background: rgba(76, 175, 80, 0.35); box-shadow: inset 4px 0 0 var(--color-success, #4CAF50); }
+  to { background: rgba(76, 175, 80, 0.10); }
+}
 tr.add td.sign { color: var(--color-success, #4CAF50); }
 tr.add td.num { color: var(--color-success, #4CAF50); box-shadow: inset 2px 0 0 var(--color-success, #4CAF50); }
 tr.del { background: rgba(229, 72, 77, 0.10); }
@@ -95,10 +103,16 @@ export default function (component) {
   const stats = parentElement.querySelector(".stats")
   stats.innerHTML = `<span class="add">+${data.added || 0}</span>` + (data.removed ? `<span class="del">-${data.removed}</span>` : "")
 
+  // The sweep plays the first time this viewer is drawn, not on every rerun.
+  const figure = parentElement.querySelector(".diff")
+  figure.classList.toggle("fresh", !figure.dataset.played)
+  figure.dataset.played = "1"
   body.replaceChildren()
+  let addIndex = 0
   for (const line of data.lines || []) {
     const tr = document.createElement("tr")
     tr.className = line.t
+    if (line.t === "add") tr.style.setProperty("--row", String(Math.min(addIndex++, 12)))
     if (line.t === "hunk") {
       const td = document.createElement("td")
       td.colSpan = 4

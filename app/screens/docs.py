@@ -9,7 +9,7 @@ import re
 import streamlit as st
 
 from backend.coverage import coverage_table
-from backend.pipeline import load_results_cache
+from backend.pipeline import MAX_LOCAL_DRAFTS, load_results_cache
 from components import copy_text
 from components.diff_view import function_diff, render_diff
 from helpers import page_heading, render_stats
@@ -108,12 +108,20 @@ def _render_coverage(coverage: dict) -> None:
     def pct(value) -> str:
         return "n/a" if value is None else f"{value}%"
 
+    total = coverage.get("functions", 0)
+    after = coverage.get("functions_after", 0)
+    drafted = coverage.get("docstrings_drafted", 0)
     render_stats([
-        ("Before", pct(coverage.get("functions_before_pct"))),
-        ("After", pct(coverage.get("functions_after_pct"))),
-        ("Drafted", coverage.get("docstrings_drafted", 0)),
-        ("Functions documented", f"{coverage.get('functions_after', 0)}/{coverage.get('functions', 0)}"),
-    ], key="docs_stats")
+        ("Coverage before", pct(coverage.get("functions_before_pct"))),
+        ("Coverage after", pct(coverage.get("functions_after_pct"))),
+        ("Drafted this run", drafted),
+        ("Functions with a docstring", f"{after}/{total}"),
+    ], key="docs_stats", count_up=True)
+    if drafted >= MAX_LOCAL_DRAFTS and after < total:
+        st.caption(
+            f"Drafting stops at {MAX_LOCAL_DRAFTS:,} functions per scan, so {total - after:,} still have no "
+            "docstring. Scan a subfolder of the repository to draft the rest."
+        )
     with st.expander("Coverage table", type="compact", key="compact_coverage"):
         st.caption(
             "Classes and modules aren’t drafted: "
@@ -123,33 +131,58 @@ def _render_coverage(coverage: dict) -> None:
         st.markdown(coverage_table(coverage))
 
 
-def _render_definition(fn: dict, diff_mode: bool = False) -> None:
+PAGE_SIZE = 40
+
+
+def row_key(fn: dict, seen: set) -> str:
+    """
+    A key unique within one run. The line number separates two definitions with the same
+    name in one file (scrapy's Command.iterate_spider_output is defined twice), and component
+    keys may not contain "__" (Spider.__init__), so runs of non-word characters collapse.
+    """
+    base = re.sub(r"[\W_]+", "_", f"{fn.get('file', '')}_{fn.get('lineno', '')}_{fn.get('name', '')}").strip("_")
+    key, n = base, 1
+    while key in seen:
+        n += 1
+        key = f"{base}_{n}"
+    seen.add(key)
+    return key
+
+
+def _render_definition(fn: dict, key: str, diff_mode: bool = False) -> None:
     docstring = (fn.get("docstring") or "").strip()
-    # Component keys may not contain "__" (Spider.__init__ would), so runs of non-word characters
-    # and underscores collapse to one underscore.
-    row_key = re.sub(r"[\W_]+", "_", f"{fn.get('file', '')}_{fn.get('name', '')}").strip("_")
-    with st.container(key=f"docs_fn_{row_key}", gap="xxsmall"):
+    with st.container(key=f"docs_fn_{key}", gap="xxsmall"):
         with st.container(horizontal=True, vertical_alignment="center", gap="small"):
             st.markdown(f'<code class="docs-sig">{_literal(signature(fn))}</code>',
                         unsafe_allow_html=True, width="content")
             badge = status_badge(fn)
             if badge:
                 st.badge(badge[0], color=badge[1])
-        change = function_diff(fn)
-        if diff_mode and change:
-            render_diff(*change, title=signature(fn), key=f"diff_inline_{row_key}")
-            return
-        if docstring:
-            copy_text.docstring(docstring, key=f"doc_copy_{row_key}")
-        elif fn.get("kind") == "class":
-            st.caption("Class docstrings aren’t drafted: the local model learned from functions only.")
-        else:
-            st.caption("Neither the local model nor the cloud fallback drafted this one.")
-        with st.expander("Source", type="compact", key=f"compact_src_{row_key}"):
+        if diff_mode:
+            change = function_diff(fn)
             if change:
-                render_diff(*change, title=signature(fn), key=f"diff_src_{row_key}", context=1000)
-            else:
-                st.code(fn.get("source", ""), language="python")
+                render_diff(*change, title=signature(fn), key=f"diff_inline_{key}")
+                return
+        if docstring:
+            copy_text.docstring(docstring, key=f"doc_copy_{key}")
+        elif fn.get("kind") == "class":
+            st.caption("CodeDocAI drafts docstrings for functions and methods. A class summary is left to you.")
+        else:
+            st.caption("Neither our model nor the cloud fallback drafted this one.")
+        # The diff is only worked out while the toggle is open; with thousands of functions,
+        # building every one up front made each click wait on the whole list.
+        source = st.expander("Source", type="compact", key=f"compact_src_{key}", on_change="rerun")
+        if source.open:
+            with source:
+                change = function_diff(fn)
+                if change:
+                    render_diff(*change, title=signature(fn), key=f"diff_src_{key}", context=1000)
+                else:
+                    st.code(fn.get("source", ""), language="python")
+
+
+def _show_more() -> None:
+    st.session_state["docs_limit"] = st.session_state.get("docs_limit", PAGE_SIZE) + PAGE_SIZE
 
 
 @st.fragment
@@ -161,10 +194,14 @@ def _render_function_list(everything: list) -> None:
                                           key="docs_filter_show")
         diff_mode = st.toggle("Diff view", key="docs_diff_mode",
                               help="Show each drafted docstring as the change it makes to the code.")
-    functions = filter_definitions(everything, query, SHOW_CHOICES.get(show_label or "All", "Everything"))
-    if len(functions) != len(everything):
-        st.caption(f"Showing {len(functions)} of {len(everything)}")
-    if everything and not functions:
+    matching = filter_definitions(everything, query, SHOW_CHOICES.get(show_label or "All", "Everything"))
+    signature_now = (query, show_label, diff_mode)
+    if st.session_state.get("_docs_view") != signature_now:
+        st.session_state["_docs_view"] = signature_now
+        st.session_state["docs_limit"] = PAGE_SIZE
+    limit = st.session_state.get("docs_limit", PAGE_SIZE)
+    functions = matching[:limit]
+    if everything and not matching:
         st.info("Nothing matches this filter. Clear the search or choose All.")
 
     by_file: dict[str, list] = {}
@@ -174,6 +211,7 @@ def _render_function_list(everything: list) -> None:
     for fn in everything:
         all_by_file.setdefault(fn.get("file", "unknown"), []).append(fn)
 
+    seen: set = set()
     for file_path, funcs in by_file.items():
         documented, total = file_coverage(all_by_file.get(file_path, funcs))
         percent = round(100 * documented / total) if total else 0
@@ -188,14 +226,29 @@ def _render_function_list(everything: list) -> None:
                 unsafe_allow_html=True,
             )
             for fn in funcs:
-                _render_definition(fn, diff_mode)
+                _render_definition(fn, row_key(fn, seen), diff_mode)
+
+    if matching:
+        with st.container(horizontal=True, vertical_alignment="center", gap="small", key="docs_paging"):
+            st.caption(f"Showing {len(functions):,} of {len(matching):,}"
+                       + (f" (filtered from {len(everything):,})" if len(matching) != len(everything) else ""))
+            if len(functions) < len(matching):
+                st.button(f"Show {min(PAGE_SIZE, len(matching) - len(functions))} more", key="docs_more",
+                          type="secondary", on_click=_show_more)
 
 
 def render_documentation() -> None:
     if st.session_state.get("current_screen") != "docs":
         return
 
-    page_heading("Documentation")
+    heading, action = st.columns([4, 1], vertical_alignment="center")
+    with heading:
+        page_heading("Documentation")
+    with action, st.container(horizontal=True, horizontal_alignment="right"):
+        if st.session_state.get("pipeline_results") and st.button(
+                "Ask a question", key="docs_ask_top", type="secondary", icon=":material/forum:"):
+            st.session_state["current_screen"] = "qa"
+            st.rerun()
 
     pipeline_data = st.session_state.get("pipeline_results")
 

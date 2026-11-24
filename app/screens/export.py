@@ -74,7 +74,7 @@ def render_export() -> None:
     stats = [("Files scanned", files_scanned), ("Docstrings drafted", functions_documented), (q_label, questions_asked)]
     if coverage.get("functions_after_pct") is not None:
         stats.append(("Functions documented", f"{coverage['functions_after_pct']}%"))
-    render_stats(stats, key="export_stats")
+    render_stats(stats, key="export_stats", count_up=True)
 
     st.markdown(
         '<div class="archive-manifest">'

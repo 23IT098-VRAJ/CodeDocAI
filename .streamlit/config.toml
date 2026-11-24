@@ -42,4 +42,8 @@ headless = true
 # the environment variable STREAMLIT_SERVER_ADDRESS=0.0.0.0 (it overrides this line).
 address = "localhost"
 maxUploadSize = 100
+# The file watcher re-scans every loaded module (torch, transformers, chromadb...) each time
+# a browser connects, which held each page load back by 4-8 seconds. Turn it on only while
+# editing code: streamlit run app/app.py --server.fileWatcherType auto
+fileWatcherType = "none"
 enableXsrfProtection = true

@@ -20,7 +20,7 @@ from backend.repo.loader import (
     extract_zip,
     read_source,
 )
-from helpers import audit_event, new_scan_button, page_heading, render_stats, skeleton
+from helpers import audit_event, new_scan_button, page_heading, render_stats
 
 logger = logging.getLogger(__name__)
 
@@ -58,27 +58,34 @@ def render_scan() -> None:
         ) or SOURCE_MODES[0]
         github_url, uploaded_file = "", None
         error_field = st.session_state.get("scan_error_field")
-        with st.container(border=True, key="scan_source_card"):
-            if source_mode == SOURCE_MODES[0]:
-                github_url = st.text_input(
-                    "GitHub repository URL",
-                    placeholder="https://github.com/owner/repository",
-                    key="scan_github_url_input",
-                )
-                hint = "Public repository · Python · up to 100 MB and 500 files"
-            else:
-                uploaded_file = st.file_uploader("Project .zip", type=["zip"], key="scan_file_upload")
-                hint = "A .zip of the project · Python · up to 100 MB and 500 files. Works for private code."
-            # An error sits under the field it is about; role="alert" announces it to screen readers.
-            if status == "error" and error_field == ("url" if source_mode == SOURCE_MODES[0] else "zip"):
-                err_msg = st.session_state.get("scan_error_message", "The scan failed.")
-                st.markdown(f'<p class="scan-error-line" role="alert">{_html.escape(err_msg)}</p>',
-                            unsafe_allow_html=True)
-            else:
-                st.caption(hint)
+        # One form: the click sends the pasted URL with it. As separate widgets, the URL was
+        # committed by its own rerun on blur, and a click landing during that rerun was lost.
+        # The form and, once it is sent, the scan status share one slot: the status replaces the
+        # form, so the old form is never left on the page while the scan runs.
+        form_slot = st.empty()
+        with form_slot.container(), st.form("scan_form", border=False, enter_to_submit=True):
+            with st.container(border=True, key="scan_source_card"):
+                if source_mode == SOURCE_MODES[0]:
+                    github_url = st.text_input(
+                        "GitHub repository URL",
+                        placeholder="https://github.com/owner/repository",
+                        key="scan_github_url_input",
+                    )
+                    hint = "Public repository · Python · up to 100 MB and 500 files"
+                else:
+                    uploaded_file = st.file_uploader("Project .zip", type=["zip"], key="scan_file_upload")
+                    hint = "A .zip of the project · Python · up to 100 MB and 500 files. Works for private code."
+                # An error sits under the field it is about; role="alert" announces it to screen readers.
+                if status == "error" and error_field == ("url" if source_mode == SOURCE_MODES[0] else "zip"):
+                    err_msg = st.session_state.get("scan_error_message", "The scan failed.")
+                    st.markdown(f'<p class="scan-error-line" role="alert">{_html.escape(err_msg)}</p>',
+                                unsafe_allow_html=True)
+                else:
+                    st.caption(hint)
+            submitted = st.form_submit_button("Scan repository", key="cta_scan_repo", type="primary")
 
         # Trigger Backend Pipeline
-        if st.button("Scan repository", key="cta_scan_repo", type="primary"):
+        if submitted:
             has_zip = uploaded_file is not None
             has_url = bool(github_url and github_url.strip())
 
@@ -93,9 +100,9 @@ def render_scan() -> None:
             temp_dir = tempfile.mkdtemp(prefix=TEMP_PREFIX)
             repo_source = None
 
-            loading = skeleton(5)
             try:
-                with st.status("Scanning the repository", expanded=True) as status_box:
+                with form_slot.container(), st.container(key="scan_status"), \
+                        st.status("Scanning the repository", expanded=True) as status_box:
                     # 1. Loading Phase
                     if has_zip:
                         status_box.write(f"Extracting `{uploaded_file.name}`")
@@ -161,7 +168,6 @@ def render_scan() -> None:
                     st.rerun()
 
             except RepoValidationError as e:
-                loading.empty()
                 cleanup_repo(temp_dir)
                 st.session_state["repo_source"] = None
                 st.session_state["scan_status"] = "error"
@@ -218,7 +224,7 @@ def render_scan() -> None:
             else:
                 stats += [("Missing docstrings", missing_count)]
                 if missing_count:
-                    stats.append(("Estimated time", estimate_generation_time(missing_count)))
+                    stats.append(("To generate, about", estimate_generation_time(missing_count)))
             render_stats(stats, key="scan_stats")
             ledger_html = '<div id="ghost-scan-results" class="scan-results-section">'
 
