@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+"/>
-  <img src="https://img.shields.io/badge/Streamlit-1.66+-FF4B4B?style=flat-square&logo=streamlit&logoColor=white" alt="Streamlit 1.66+"/>
+  <img src="https://img.shields.io/badge/Streamlit-1.67+-FF4B4B?style=flat-square&logo=streamlit&logoColor=white" alt="Streamlit 1.67+"/>
   <img src="https://img.shields.io/badge/PyTorch-2.x-EE4C2C?style=flat-square&logo=pytorch&logoColor=white" alt="PyTorch 2.x"/>
   <img src="https://img.shields.io/badge/CodeT5-fine--tuned-FFD21E?style=flat-square" alt="Fine-tuned CodeT5"/>
   <img src="https://img.shields.io/badge/ChromaDB-in--memory-00897B?style=flat-square" alt="ChromaDB"/>
@@ -32,6 +32,8 @@ That diff is real output, for a helper in [buckyroberts/Spider](https://github.c
 
 - [Why it is built this way](#why-it-is-built-this-way)
 - [How a scan runs](#how-a-scan-runs)
+- [Measured on real repositories](#measured-on-real-repositories)
+- [The home page](#the-home-page)
 - [The five screens](#the-five-screens)
 - [What you download](#what-you-download)
 - [The docstring model](#the-docstring-model)
@@ -53,7 +55,7 @@ So CodeDocAI splits the work by how often it happens and how hard it is.
 
 | Job | How often | Who does it | Cloud requests |
 |---|---|---|---|
-| Draft a docstring for one function | Hundreds of times per repo | Fine-tuned CodeT5-small on your CPU or GPU | 0 |
+| Draft a docstring for one function | Hundreds of times per repo | CodeDocAI's fine-tuned CodeT5-small, on the CPU or GPU of the machine running the app | 0 |
 | Write the docstrings into your files, build the patch, count coverage | Once per file | Plain Python (`ast`, `difflib`) | 0 |
 | Explain how the whole repository fits together | Once per scan | A CrewAI agent on Gemini, with Groq as backup | 1 |
 | Answer a question about the code | Once per new question | A CrewAI agent, fed the four closest pieces of code | 1 |
@@ -67,15 +69,15 @@ flowchart TB
     A["GitHub URL or .zip"] --> B["Loader<br/>shallow clone or extract, then size checks"]
     B --> C["AST parser<br/>functions, methods, classes"]
 
-    C -->|"no docstring"| D["CodeT5-small, local<br/>batches of 8, beam search"]
+    C -->|"no docstring"| D["CodeT5-small, our model<br/>batches of 8, beam search"]
     C -->|"already documented"| G
-    D -. "local model unavailable" .-> E["Cloud fallback<br/>8 functions per request, 5 requests at most"]
+    D -. "CodeT5 unavailable" .-> E["Cloud fallback<br/>8 functions per request, 5 requests at most"]
     D --> F["Drafted docstrings"]
     E --> F
 
     F --> W["Writer<br/>documented copy + unified diff"]
     F --> V["Coverage<br/>before and after"]
-    F --> G["Vector index<br/>ChromaDB, one collection per session"]
+    F --> G["Vector index<br/>ChromaDB, one collection per session,<br/>embedded in batches of 96"]
 
     F --> O["Outline of every file"]
     O --> R["Secret redaction"]
@@ -90,21 +92,44 @@ flowchart TB
     Q --> Z
 ```
 
-The pipeline in [`backend/pipeline.py`](backend/pipeline.py) knows nothing about the interface. It is a generator that yields events (`progress`, `result`, `partial`, `done`, `rate_limited`, `error`), and the Streamlit screens just render whatever arrives.
+The pipeline in [`backend/pipeline.py`](backend/pipeline.py) knows nothing about the interface. It is a generator that yields events (`progress`, `result`, `partial`, `done`, `rate_limited`, `error`), and the Streamlit screens just render whatever arrives. Indexing reports after every batch of 96 entries, so a large repository shows progress there instead of a pause.
+
+## Measured on real repositories
+
+Two full runs of the pipeline (parse, CodeT5 drafting, indexing) on a CPU, with no GPU and no API calls:
+
+| Repository | Files | Functions | Drafted | Coverage before → after | Time |
+|---|---:|---:|---:|:---:|---:|
+| [scrapy/scrapy](https://github.com/scrapy/scrapy) | 195 | 1,979 | 1,000 (the per-scan cap) | 24% → 74% | 265 s |
+| [buckyroberts/Spider](https://github.com/buckyroberts/Spider) | 5 | 23 | 23 | 0% → 100% | 5 s |
+
+That is 1,023 docstrings in about 270 seconds, or 0.26 s each with parsing and indexing included. The home page shows these figures.
+
+## The home page
+
+- **Hero.** The headline types itself out, then a small editor drafts a real docstring for a Spider function.
+- **Measured figures.** The numbers from the table above, counting up as they come into view.
+- **Try it.** Paste any Python function, or pick one of three samples, and CodeT5 drafts its docstring on the spot (about 0.4 s). It runs the same model call and write-back as a full scan, with no API call ([`backend/tryit.py`](backend/tryit.py)).
+- **How it works.** Four steps (Scan, Draft, Map, Ask) on a rail, each with a small animation built from a real scan. It loops on its own, any step can be clicked, and a Pause button stops it. The header's "How it works" link scrolls here.
+- **What you get, privacy and FAQ.** The files in the export, a map of what a third-party AI sees, and short answers to common questions.
+
+Every section fades in as it scrolls into view, and nothing moves for visitors who set "reduce motion".
 
 ## The five screens
 
-**Scan.** Give it a root GitHub URL such as `https://github.com/owner/repository`, or a `.zip` up to 100 MB. The loader clones with `depth=1`, checks the limits (100 MB, 500 Python files), and walks each file with Python's `ast` module. You get a ledger: one row per file, with how many functions it has and how many are missing a docstring, plus a rough time estimate for the next step.
+**Scan.** Give it a root GitHub URL such as `https://github.com/owner/repository`, or a `.zip` up to 100 MB, and press Scan repository (or Enter). The loader clones with `depth=1`, checks the limits (100 MB, 500 Python files), and walks each file with Python's `ast` module, listing each step in a status box that follows the newest line. You get a ledger: one row per file, with how many functions it has and how many are missing a docstring, ten rows at a time with the rest a scroll away, plus an estimate of how long Generate will take.
 
-**Generate.** A live feed shows each step as it happens: parsing, drafting in batches, indexing, then the overview. The scanned copy of your code is deleted the moment this finishes. If the cloud doesn't answer, the screen keeps everything produced locally and offers two buttons, one to read the docs without an overview and one to retry only the overview.
+**Generate.** A step tracker (Clone, Parse, Draft n/N, Index, Overview) and a live log that follows the newest line show each step as it happens. When drafting ends, the log gives way to an indexing screen whose ring fills to the real percentage of entries embedded, and then to a loading screen while the cloud writes the overview. That screen only moves on at the end of its animation loop, never halfway. The scanned copy of your code is deleted the moment this finishes. If the cloud doesn't answer, the screen keeps everything already produced and offers two buttons, one to read the docs without an overview and one to retry only the overview.
 
-**Docs.** The overview sits on top, then coverage (before, after, docstrings drafted, a per-file table), then every function and class in an expandable row. Rows carry a badge when it matters: `AI DRAFT` for model-written text, `NO DOCSTRING` for classes left alone, `NOT GENERATED` when neither model produced anything. A search box and a filter (`Everything`, `AI drafts`, `No docstring`, `Already documented`) cut a long list down.
+When it finishes, **Documentation ready** sums the run up: coverage before and after, docstrings drafted, functions scanned, the drafting time per docstring, a coverage bar for each file, what the scan found (functions, methods, classes, module docstrings) and the longest functions that now have a docstring.
 
-**Q&A.** Ask anything about the scanned code. Two starter questions are generated from your repository, not from a canned list: one about the project, one about its largest file. Answers render as Markdown with citation pills like `spider.py::Spider.crawl_page()`.
+**Docs.** The overview sits on top, then coverage (before, after, docstrings drafted, a per-file table), then every function and class in an expandable row, 40 at a time with "Show 40 more" below. Rows carry a badge when it matters: `Draft` for model-written text, `No docstring` for classes left alone, `Not generated` when neither model produced anything. A search box, a filter (`All`, `Drafted`, `Missing`) and a diff view cut a long list down, and an "Ask a question" button sits next to the title.
+
+**Q&A.** Ask anything about the scanned code. Four starter questions work on any repository (what the project is about, how the modules fit together, where the program starts, how errors are handled), and a three-step strip explains how an answer is put together. Answers stream in as Markdown with citation pills like `spider.py::Spider.crawl_page()`, and a short follow-up is read together with the previous question.
 
 **Export.** One button builds the archive in memory and downloads it.
 
-Navigation is a rail across the top, the browser's back and forward buttons work, each screen has its own tab title, and a page refresh brings your scan back because the session id travels in the URL.
+Navigation is a step rail across the top, with a command palette on `Ctrl K` (`⌘K` on a Mac). The browser's back and forward buttons work, each screen has its own tab title, and a page refresh brings your scan back because the session id travels in the URL.
 
 ## What you download
 
@@ -149,7 +174,7 @@ BLEU looks low because it rewards matching one reference word for word, and a fu
 
 What that buys you in practice is a one-line summary per function, the kind of sentence you'd write as the first line of a docstring. It does not write `Args` and `Returns` sections. Drafting covers functions and methods. Classes are parsed, indexed and counted, and their docstrings are left to the people who know what each class is for.
 
-On a CPU, drafting measured under 0.2 seconds per function. Batching gave identical output about 1.6 times faster than drafting one function at a time.
+On a CPU, drafting measured under 0.2 seconds per function (see [Measured on real repositories](#measured-on-real-repositories)). Batching gave identical output about 1.6 times faster than drafting one function at a time. A scan drafts at most 1,000 functions; the rest are listed as still missing.
 
 ## Answers you can check
 
@@ -257,7 +282,7 @@ Without the weights the app still runs. Docstrings then come from the cloud fall
 streamlit run app/app.py
 ```
 
-The app opens at `http://localhost:8501`. The first scan is slower than later ones, since that's when the embedding model loads.
+The app opens at `http://localhost:8501`. The first start shows a loading screen for about 20 seconds while CodeT5 loads, and the first scan is slower than later ones, since that's when the embedding model loads.
 
 > [!TIP]
 > With a CUDA GPU, install the matching PyTorch build before `requirements.txt`. The model moves to the GPU on its own when one is available.
@@ -281,15 +306,16 @@ CodeDocAI/
 ├── app/
 │   ├── app.py                  page setup, session handling, routing, model loading
 │   ├── styles.py               the whole stylesheet, built on three layers of design tokens
-│   ├── helpers.py              nav rail, new-scan confirmation, Markdown rendering, audit log
+│   ├── helpers.py              top bar, new-scan confirmation, Markdown rendering, audit log, page effects
+│   ├── components/             small HTML/JS components: top bar, command palette, code window,
+│   │                           diff view, copy button, How it works tour, index and overview loaders
 │   └── screens/
-│       ├── landing.py          first page
+│       ├── landing.py          home page, Try it box, How it works
 │       ├── scan.py             URL or .zip input, the file ledger
-│       ├── generation.py       live progress, partial results, overview retry
+│       ├── generation.py       live progress, loaders, the run summary, overview retry
 │       ├── docs.py             overview, coverage, docstring browser with filter
 │       ├── qa.py               questions, answers, citations
 │       ├── export.py           builds the archive
-│       ├── architecture.py     "How it works" page
 │       ├── login.py            demo sign-in
 │       ├── manager_dashboard.py  audit log
 │       └── foundation.py       reference page for the design tokens
@@ -301,6 +327,8 @@ CodeDocAI/
 │   ├── coverage.py             before and after counts
 │   ├── outline.py              per-file outlines for the overview and the index
 │   ├── security.py             question check, secret redaction
+│   ├── storage.py              locked, atomic JSON files (audit log, cooldowns)
+│   ├── tryit.py                the home page's Try it box
 │   ├── rag/vectorstore.py      ChromaDB collections
 │   ├── repo/loader.py          clone, extract, validate, clean up
 │   ├── agents/
@@ -321,6 +349,7 @@ Better to read these here than to discover them halfway through a demo.
 
 - Python only. The parser is Python's own `ast`, and a file with a syntax error is skipped.
 - Docstrings are one-line summaries. No parameter or return sections.
+- At most 1,000 functions are drafted per scan; on a bigger project the rest stay listed as missing.
 - Class docstrings aren't drafted; drafting covers functions and methods (see [The docstring model](#the-docstring-model)).
 - Public GitHub repositories only; there's no token support for private ones. A `.zip` upload gets around that.
 - Tests, `__init__.py`, virtual environments and hidden folders are skipped on purpose.
