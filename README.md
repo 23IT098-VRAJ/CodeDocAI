@@ -1,594 +1,337 @@
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3.12+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.12+"/>
-  <img src="https://img.shields.io/badge/PyTorch-2.x-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white" alt="PyTorch 2.x"/>
-  <img src="https://img.shields.io/badge/Streamlit-1.35+-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white" alt="Streamlit"/>
-  <img src="https://img.shields.io/badge/ChromaDB-1.5+-00897B?style=for-the-badge&logo=databricks&logoColor=white" alt="ChromaDB"/>
-  <img src="https://img.shields.io/badge/🤗_Hugging_Face-CodeT5-FFD21E?style=for-the-badge" alt="Hugging Face"/>
-  <img src="https://img.shields.io/badge/CrewAI-Multi--Agent-7C3AED?style=for-the-badge" alt="CrewAI"/>
-  <img src="https://img.shields.io/badge/License-MIT-22C55E?style=for-the-badge" alt="MIT License"/>
-</p>
-
 <h1 align="center">CodeDocAI</h1>
 
 <p align="center">
-  <strong>A hybrid documentation engine that blends local edge ML inference with cloud multi-agent orchestration to generate code documentation, system architecture overviews, and interactive RAG-grounded codebase Q&A.</strong>
+  <strong>Docstrings for the functions nobody got around to documenting.</strong>
 </p>
 
 <p align="center">
-  Point it at any Python repository. It reads the AST, drafts every missing docstring locally via a fine-tuned CodeT5, synthesizes a module overview through CrewAI cloud agents, indexes the entire codebase into a vector store, and lets you interrogate the code in natural language — with exact <code>file.py::function_name()</code> citations.
+  <img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+"/>
+  <img src="https://img.shields.io/badge/Streamlit-1.66+-FF4B4B?style=flat-square&logo=streamlit&logoColor=white" alt="Streamlit 1.66+"/>
+  <img src="https://img.shields.io/badge/PyTorch-2.x-EE4C2C?style=flat-square&logo=pytorch&logoColor=white" alt="PyTorch 2.x"/>
+  <img src="https://img.shields.io/badge/CodeT5-fine--tuned-FFD21E?style=flat-square" alt="Fine-tuned CodeT5"/>
+  <img src="https://img.shields.io/badge/ChromaDB-in--memory-00897B?style=flat-square" alt="ChromaDB"/>
+  <img src="https://img.shields.io/badge/CrewAI-agents-7C3AED?style=flat-square" alt="CrewAI"/>
+  <img src="https://img.shields.io/badge/License-MIT-22C55E?style=flat-square" alt="MIT License"/>
 </p>
 
----
+Paste a public GitHub URL or upload a `.zip` of a Python project. A CodeT5 model running on your own machine drafts every missing docstring and writes it back into a copy of your files. After that you can ask questions about the code in plain English, and every answer names the file and function it came from.
 
-## Table of Contents
+```diff
+  def file_to_set(file_name):
++     """Convert a file to a set."""
+      results = set()
+      with open(file_name, 'rt') as f:
+          for line in f:
+              results.add(line.replace('\n', ''))
+      return results
+```
 
-- [The Hybrid Architectural Philosophy](#the-hybrid-architectural-philosophy)
-- [End-to-End System Architecture](#end-to-end-system-architecture)
-- [Model Training & Benchmark Performance](#model-training--benchmark-performance)
-- [Key Features & Capabilities](#key-features--capabilities)
-- [Repository Structure](#repository-structure)
-- [Installation & Local Setup](#installation--local-setup)
-- [User Workflow & Walkthrough](#user-workflow--walkthrough)
-- [Fault Tolerance & Resilience Engineering](#fault-tolerance--resilience-engineering)
+That diff is real output, for a helper in [buckyroberts/Spider](https://github.com/buckyroberts/Spider), and it is the whole idea. You get it as a patch you can `git apply`, alongside a coverage report that says how much of the project had docstrings before the scan and how much has them now.
+
+## Contents
+
+- [Why it is built this way](#why-it-is-built-this-way)
+- [How a scan runs](#how-a-scan-runs)
+- [The five screens](#the-five-screens)
+- [What you download](#what-you-download)
+- [The local model](#the-local-model)
+- [Answers you can check](#answers-you-can-check)
+- [What leaves your machine](#what-leaves-your-machine)
+- [When the cloud says no](#when-the-cloud-says-no)
+- [Enterprise demo](#enterprise-demo)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [Project layout](#project-layout)
+- [Known limits](#known-limits)
 - [License](#license)
-- [Contributing](#contributing)
 
----
+## Why it is built this way
 
-## The Hybrid Architectural Philosophy
+Sending every function of a repository to a cloud model sounds simple until you try it on free-tier keys: a project with a hundred functions hits HTTP 429 within minutes, and the run dies halfway with nothing saved.
 
-### Why monolithic LLM API calls fail on enterprise repositories
+So CodeDocAI splits the work by how often it happens and how hard it is.
 
-Naively sending every function in a large repository to a cloud LLM API collapses under three compounding failure modes:
+| Job | How often | Who does it | Cloud requests |
+|---|---|---|---|
+| Draft a docstring for one function | Hundreds of times per repo | Fine-tuned CodeT5-small on your CPU or GPU | 0 |
+| Write the docstrings into your files, build the patch, count coverage | Once per file | Plain Python (`ast`, `difflib`) | 0 |
+| Explain how the whole repository fits together | Once per scan | A CrewAI agent on Gemini, with Groq as backup | 1 |
+| Answer a question about the code | Once per new question | A CrewAI agent, fed the four closest pieces of code | 1 |
 
-| Failure Mode | Impact |
-|---|---|
-| **Rate limits** | Free-tier Gemini and Groq keys hit HTTP 429 within minutes on repos with 100+ functions, stalling entire pipelines. |
-| **Context explosion** | Concatenating an entire codebase into a single prompt exceeds context windows (often 8K–128K tokens), forcing lossy truncation or chunking heuristics that lose inter-module context. |
-| **Cost** | At \$0.075–\$0.15 per 1K output tokens, documenting a 500-function repo costs \$15–\$30 per run — unsustainable for iterative development workflows. |
+A normal scan therefore costs one cloud request, however large the repository is. Everything in the first two rows is finished and saved before that request goes out, which means a rate limit can cost you the overview but never the docstrings.
 
-### How CodeDocAI solves this: Local AST + Cloud Agent
-
-CodeDocAI implements a **tiered inference architecture** that assigns the right model to the right task:
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│  HIGH VOLUME · LOW COMPLEXITY                                       │
-│  ─────────────────────────────                                      │
-│  Function-level docstring generation                                │
-│  → Local CodeT5-small (~242 MB, Seq2Seq, Beam Search)               │
-│  → Zero API cost · Zero rate limits · Sub-second per function       │
-├─────────────────────────────────────────────────────────────────────┤
-│  LOW VOLUME · HIGH COMPLEXITY                                       │
-│  ─────────────────────────────                                      │
-│  Repository-wide architectural synthesis + RAG Q&A                  │
-│  → Cloud LLMs (Gemini 3.6 Flash / Groq Llama 3.1 8B)               │
-│  → CrewAI orchestration · Failover cascading · Cooldown management  │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-The local CodeT5 model handles the **high-volume, structurally predictable** task of drafting individual function docstrings — hundreds per repository — entirely offline. The expensive cloud LLMs are reserved for the **low-volume, high-reasoning** tasks: multi-file architectural synthesis and free-form natural language Q&A. This separation achieves **>90% cost reduction** compared to a pure cloud approach while maintaining full architectural awareness through the CrewAI agent layer.
-
----
-
-## End-to-End System Architecture
+## How a scan runs
 
 ```mermaid
 flowchart TB
-    subgraph INPUT["📁 Source Input"]
-        A["GitHub URL<br/>(Public HTTPS)"] --> C["Repo Loader<br/>(loader.py)"]
-        B["ZIP Archive<br/>(File Upload)"] --> C
-    end
+    A["GitHub URL or .zip"] --> B["Loader<br/>shallow clone or extract, then size checks"]
+    B --> C["AST parser<br/>functions, methods, classes"]
 
-    subgraph AST["🔬 AST Extraction"]
-        C --> D["Shallow Clone / Extract<br/>(GitPython · zipfile)"]
-        D --> E["Validation Engine<br/>(≤100 MB · ≤500 .py files)"]
-        E --> F["AST Parser<br/>(extractor.py)"]
-        F --> G["Function Nodes<br/>(name · source · has_docstring · LOC)"]
-    end
+    C -->|"no docstring"| D["CodeT5-small, local<br/>batches of 8, beam search"]
+    C -->|"already documented"| G
+    D -. "local model unavailable" .-> E["Cloud fallback<br/>8 functions per request, 5 requests at most"]
+    D --> F["Drafted docstrings"]
+    E --> F
 
-    subgraph LOCAL_ML["🧠 Local CodeT5 Inference"]
-        G -->|"Undocumented<br/>Functions"| H["Fine-Tuned CodeT5-small<br/>(T5ForConditionalGeneration)"]
-        H -->|"max_length=64 · num_beams=4<br/>no_repeat_ngram_size=3"| I["Generated Docstrings"]
-    end
+    F --> W["Writer<br/>documented copy + unified diff"]
+    F --> V["Coverage<br/>before and after"]
+    F --> G["Vector index<br/>ChromaDB, one collection per session"]
 
-    subgraph FALLBACK["☁️ Cloud Fallback"]
-        H -.->|"Local Engine<br/>Failure"| J["Docstring Writer Agent<br/>(docwriter.py)"]
-        J --> K["CrewAI + LLM<br/>(Gemini / Groq)"]
-        K --> I
-    end
+    F --> O["Outline of every file"]
+    O --> R["Secret redaction"]
+    R --> X["Explainer agent<br/>1 cloud request"]
+    X --> P["Repository overview"]
+    P --> G
 
-    subgraph VECTOR["📊 Vector Indexing"]
-        I --> L["Chunk Formatter<br/>(embedder.py)"]
-        G -->|"Documented<br/>Functions"| L
-        L --> M["SentenceTransformer<br/>(all-MiniLM-L6-v2)"]
-        M --> N["ChromaDB<br/>(In-Memory Collection)"]
-    end
-
-    subgraph CLOUD_AGENTS["🤖 CrewAI Cloud Agents"]
-        I --> O["Explainer Agent<br/>(explainer.py)"]
-        O --> P["Module Overview<br/>Synthesis"]
-        P --> Q["Resilience Engine<br/>(rate_limiter.py)"]
-        Q -->|"GEMINI_1 → GEMINI_2<br/>→ GROQ_1 → GROQ_2"| R["Active LLM"]
-    end
-
-    subgraph UI["🖥️ Streamlit Interactive UI"]
-        P --> S["Documentation View<br/>(docs.py)"]
-        N --> T["RAG Q&A Chat<br/>(qa.py)"]
-        T --> U["QA Agent<br/>(agents/qa.py)"]
-        U --> V["Grounded Answer<br/>+ Citation Pills"]
-        S --> W["Export Engine<br/>(export.py)"]
-        V --> W
-        W --> X["In-Memory ZIP<br/>(documentation.md · qa_transcript.md · metadata.json)"]
-    end
-
-    style INPUT fill:#1a1a2e,stroke:#E8B339,color:#F0EAD9
-    style AST fill:#1a1a2e,stroke:#4CAF50,color:#F0EAD9
-    style LOCAL_ML fill:#1a1a2e,stroke:#2196F3,color:#F0EAD9
-    style FALLBACK fill:#1a1a2e,stroke:#E5484D,color:#F0EAD9
-    style VECTOR fill:#1a1a2e,stroke:#00897B,color:#F0EAD9
-    style CLOUD_AGENTS fill:#1a1a2e,stroke:#7C3AED,color:#F0EAD9
-    style UI fill:#1a1a2e,stroke:#FF4B4B,color:#F0EAD9
+    G --> Q["Q&A<br/>top 4 entries, numbered sources"]
+    W --> Z["Export .zip"]
+    V --> Z
+    P --> Z
+    Q --> Z
 ```
 
----
+The pipeline in [`backend/pipeline.py`](backend/pipeline.py) knows nothing about the interface. It is a generator that yields events (`progress`, `result`, `partial`, `done`, `rate_limited`, `error`), and the Streamlit screens just render whatever arrives.
 
-## Model Training & Benchmark Performance
+## The five screens
 
-The local CodeT5-small model was fine-tuned on a curated dataset of Python function–docstring pairs with **AST-leakage removal** applied — ensuring the model never sees the function signature inside the target docstring, forcing genuine semantic comprehension rather than trivial copy-paste from the input.
+**Scan.** Give it a root GitHub URL such as `https://github.com/owner/repository`, or a `.zip` up to 100 MB. The loader clones with `depth=1`, checks the limits (100 MB, 500 Python files), and walks each file with Python's `ast` module. You get a ledger: one row per file, with how many functions it has and how many are missing a docstring, plus a rough time estimate for the next step.
 
-### Quantitative Evaluation (10,268 Test Samples)
+**Generate.** A live feed shows each step as it happens: parsing, drafting in batches, indexing, then the overview. The scanned copy of your code is deleted the moment this finishes. If the cloud doesn't answer, the screen keeps everything produced locally and offers two buttons, one to read the docs without an overview and one to retry only the overview.
 
-| Metric | Score | Interpretation |
-|---|:---:|---|
-| **ROUGE-1** | **34.45** | Unigram overlap between generated and reference docstrings. Demonstrates that the model captures **~34% of the vocabulary** used by human-written documentation — strong for a 60M-parameter model operating without context beyond the function body. |
-| **ROUGE-2** | **12.12** | Bigram overlap measuring phrase-level structural alignment. A 12% bigram match confirms the model produces **coherent multi-word phrases** (e.g., "returns the", "takes a list") rather than bag-of-words noise. |
-| **ROUGE-L** | **31.87** | Longest common subsequence measuring **sentence-level structural fidelity**. At 31.87, the model preserves the natural ordering and logical flow of documentation prose — generated text reads linearly, not as shuffled fragments. |
-| **BLEU** | **6.03** | Precision-weighted n-gram overlap with brevity penalty. A 6.03 BLEU on free-form docstring generation is expected and healthy — BLEU penalizes creative paraphrasing, and docstrings intentionally diverge from source code vocabulary. Higher BLEU would paradoxically indicate AST leakage (copying code tokens verbatim). |
+**Docs.** The overview sits on top, then coverage (before, after, docstrings drafted, a per-file table), then every function and class in an expandable row. Rows carry a badge when it matters: `AI DRAFT` for model-written text, `NO DOCSTRING` for classes left alone, `NOT GENERATED` when neither model produced anything. A search box and a filter (`Everything`, `AI drafts`, `No docstring`, `Already documented`) cut a long list down.
 
-> [!NOTE]
-> **Why is BLEU low?** BLEU was designed for machine translation where output should closely mirror a single reference. Docstring generation is an **open-ended summarization task** — multiple valid phrasings exist for the same function. A BLEU of 6.03 combined with ROUGE-L of 31.87 confirms the model generates **organically human-readable text** without memorizing input tokens.
+**Q&A.** Ask anything about the scanned code. Two starter questions are generated from your repository, not from a canned list: one about the project, one about its largest file. Answers render as Markdown with citation pills like `spider.py::Spider.crawl_page()`.
 
-### Model Architecture Summary
+**Export.** One button builds the archive in memory and downloads it.
 
-| Parameter | Value |
+Navigation is a rail across the top, the browser's back and forward buttons work, each screen has its own tab title, and a page refresh brings your scan back because the session id travels in the URL.
+
+## What you download
+
+```
+codedocai_export.zip
+├── documentation.md       the overview and every docstring, grouped by file
+├── coverage_report.md     documentation coverage before and after, per file
+├── docstrings.patch       the drafted docstrings as a unified diff
+├── documented_source/     each file that gained a docstring, with it written in
+├── qa_transcript.md       your questions, the answers and their citations
+└── metadata.json          model, counts, coverage totals, timestamps
+```
+
+To apply the docstrings to your real repository:
+
+```bash
+git apply docstrings.patch
+```
+
+The writer in [`backend/writer.py`](backend/writer.py) re-parses every file it has changed and throws the change away if the result isn't valid Python. Code that already had a docstring is never touched.
+
+## The local model
+
+A `Salesforce/codet5-small` checkpoint, fine-tuned on Python function and docstring pairs. During data preparation the function signature was stripped from each target docstring, so the model can't score well by copying its input back.
+
+| | |
 |---|---|
-| Base Model | `Salesforce/codet5-small` |
-| Architecture | `T5ForConditionalGeneration` (Encoder-Decoder) |
-| Parameters | ~60M |
-| Weights Size | ~242 MB (SafeTensors) |
-| `d_model` | 512 |
-| Attention Heads | 8 |
-| Encoder Layers | 6 |
-| Decoder Layers | 6 |
-| Vocabulary | 32,100 tokens |
-| Inference: `max_length` | 64 |
-| Inference: `num_beams` | 4 |
-| Inference: `no_repeat_ngram_size` | 3 |
-| Input Truncation | 384 tokens |
+| Architecture | `T5ForConditionalGeneration`, 6 encoder and 6 decoder layers |
+| Parameters | about 60 million |
+| Weights on disk | about 439 MB (`model.safetensors`) |
+| Input | up to 384 tokens of function source |
+| Decoding | beam search, `num_beams=4`, `max_length=64`, `no_repeat_ngram_size=3` |
+| Batching | 8 functions per call, shortest first so little padding is wasted |
 
----
+Scores on a held-out test set of 10,268 samples:
 
-## Key Features & Capabilities
+| ROUGE-1 | ROUGE-2 | ROUGE-L | BLEU |
+|:---:|:---:|:---:|:---:|
+| 34.45 | 12.12 | 31.87 | 6.03 |
 
-### 🔬 AST Parsing Engine
+BLEU looks low because it rewards matching one reference word for word, and a function can be described correctly in many ways; ROUGE-L is the fairer number for this task.
 
-The [`extractor.py`](backend/parser/extractor.py) module uses Python's built-in `ast` module to walk every `.py` file in the ingested repository. It extracts:
+What that buys you in practice is a one-line summary per function, the kind of sentence you'd write as the first line of a docstring. It does not write `Args` and `Returns` sections. It was also trained on functions only, and when we tried it on classes it produced lines like "Create a new X", so classes are parsed, indexed and counted but their docstrings are left for a human.
 
-- **Standalone functions** and **class methods** (including `async` definitions)
-- Function name (with class prefix for methods, e.g., `MyClass.my_method`)
-- Full source code segment via `ast.get_source_segment()`
-- Existing docstring detection via `ast.get_docstring()`
-- Line-of-code count per function
+On a CPU, drafting measured under 0.2 seconds per function. Batching gave identical output about 1.6 times faster than drafting one function at a time.
 
-The parser **safely skips** files with `SyntaxError`, ignores `__init__.py`, virtual environments (`venv/`, `.venv/`), `__pycache__/`, and `site-packages/` directories. Validation in [`loader.py`](backend/repo/loader.py) enforces hard caps of **100 MB** and **500 Python files** per scan.
+## Answers you can check
 
-### 🧠 Local Inference Loop
+The index holds four kinds of entry: every function or method with its docstring and source, every class with a skeleton of its attributes and method signatures, a summary of each file, and the repository overview. Embeddings come from `all-MiniLM-L6-v2`, loaded from the local Hugging Face cache.
 
-The fine-tuned CodeT5 model is loaded **once** via `@st.cache_resource` in [`app.py`](app/app.py) and mounted to `st.session_state["ai_engine"]` — preventing redundant weight loading across Streamlit reruns. During the pipeline execution in [`pipeline.py`](backend/pipeline.py):
+When you ask a question:
 
-```python
-inputs = tokenizer(fn_source, max_length=384, truncation=True, return_tensors="pt").to(device)
-with torch.no_grad():
-    outputs = model.generate(
-        input_ids=inputs["input_ids"],
-        attention_mask=inputs["attention_mask"],
-        max_length=64,
-        num_beams=4,
-        no_repeat_ngram_size=3,
-        early_stopping=True
-    )
-generated_doc = tokenizer.decode(outputs[0], skip_special_tokens=True).strip()
-```
+1. A local check runs first. Greetings get a fixed reply, and requests for secrets are refused, both without any cloud request.
+2. ChromaDB returns the four closest entries.
+3. The agent sees them as numbered blocks, `[S1]` to `[S4]`, each capped at 1,800 characters, and has to report which numbers it used.
+4. The citations are built from the metadata of those numbered entries.
 
-Each function docstring is drafted in **sub-second latency** on CPU, with zero API cost and zero rate limit exposure. If the local engine fails (missing weights, CUDA OOM), the pipeline automatically falls back to the cloud [`docwriter.py`](backend/agents/docwriter.py) agent.
+Step 4 is the part that matters. Because the citation text never comes from the model, an answer can't cite a function that wasn't retrieved. Ask the same question twice and the second answer comes from a per-session cache.
 
-### 🤖 Multi-Agent Architecture Overview
+## What leaves your machine
 
-After all function-level docstrings are drafted, [`pipeline.py`](backend/pipeline.py) invokes the CrewAI [`explainer.py`](backend/agents/explainer.py) agent to synthesize a **repository-wide architectural overview**. The agent receives the first 800 characters of up to 8 source files as context and produces a structured Markdown overview explaining inter-module relationships and system purpose.
-
-Three specialized CrewAI agents power different pipeline stages:
-
-| Agent | Module | Role |
-|---|---|---|
-| **Docstring Writer** | [`docwriter.py`](backend/agents/docwriter.py) | PEP 257 specialist — writes Google-style docstrings for individual functions |
-| **Explainer** | [`explainer.py`](backend/agents/explainer.py) | Senior Technical Writer — synthesizes holistic module overviews from multi-file context |
-| **QA Engineer** | [`qa.py`](backend/agents/qa.py) | Codebase Support Engineer — answers developer questions using strictly RAG-retrieved context |
-
-### 🔍 Grounded Vector RAG
-
-The entire documented codebase is vectorized into an **in-memory ChromaDB collection** using [`SentenceTransformer('all-MiniLM-L6-v2')`](backend/rag/embedder.py). Each chunk contains:
-
-```
-Function: {name}
-Docstring: {generated_or_existing_docstring}
-Source:
-{function_source_code}
-```
-
-When a user asks a question in the Q&A screen, the system:
-
-1. **Retrieves** the top-3 semantically similar chunks from ChromaDB via cosine similarity
-2. **Injects** the retrieved context into the QA agent's prompt
-3. **Generates** a grounded answer constrained strictly to the retrieved context
-4. **Formats** structured citations as `file.py::function_name()` pills
-
-> [!TIP]
-> The QA agent is contractually bound to output valid JSON with an `answer` field and a `citations` array. If JSON parsing fails, the raw text is gracefully surfaced as-is with an empty citation set.
-
-### 📦 Session-Isolated Export
-
-The [`export.py`](app/screens/export.py) screen compiles all session artifacts into an **in-memory ZIP archive** without any filesystem I/O:
-
-```
-codedocai_export.zip/
-├── documentation.md       # Generated module overviews & function docstrings
-├── qa_transcript.md       # Complete Q&A session log with citations
-└── metadata.json          # Pipeline telemetry & execution timestamps
-```
-
-The ZIP is built using `io.BytesIO()` and `zipfile.ZipFile` in `ZIP_DEFLATED` mode — no temporary files are written to disk, and the archive exists only in the Streamlit session's memory until the user downloads it or starts a new scan.
-
----
-
-## Repository Structure
-
-```
-CodeDocAI/
-│
-├── app/                              # Streamlit frontend application
-│   ├── app.py                        # Configuration hub, routing, CodeT5 loading
-│   ├── styles.py                     # Complete CSS design system (IBM Plex Mono dark terminal)
-│   ├── helpers.py                    # Shared navigation rail, docs builder, session reset
-│   ├── fixtures.py                   # Static data fixtures for UI rendering
-│   └── screens/                      # Modular screen renderers
-│       ├── __init__.py               # Screen module exports
-│       ├── landing.py                # Hero section, process timeline, capabilities grid
-│       ├── scan.py                   # GitHub URL / ZIP input, AST scan, file ledger
-│       ├── generation.py             # Live pipeline progress feed, CodeT5 + CrewAI execution
-│       ├── docs.py                   # Rendered documentation viewer (overview + docstrings)
-│       ├── qa.py                     # RAG-powered Q&A chat interface with citations
-│       ├── architecture.py           # Static system architecture explainer
-│       ├── export.py                 # In-memory ZIP compilation and download
-│       └── foundation.py             # Design-token acceptance artifact (Session 0)
-│
-├── backend/                          # Core ML and agent pipeline
-│   ├── __init__.py
-│   ├── pipeline.py                   # Master orchestrator: AST → CodeT5 → ChromaDB → CrewAI
-│   ├── parser/
-│   │   ├── __init__.py
-│   │   └── extractor.py              # Python AST walker — extracts functions and methods
-│   ├── model/
-│   │   ├── __init__.py
-│   │   └── summarizer.py             # Cloud fallback bridge to docwriter agent
-│   ├── agents/
-│   │   ├── __init__.py
-│   │   ├── docwriter.py              # CrewAI agent: PEP 257 docstring generation
-│   │   ├── explainer.py              # CrewAI agent: module-level overview synthesis
-│   │   └── qa.py                     # CrewAI agent: RAG-grounded Q&A with JSON citations
-│   ├── rag/
-│   │   ├── __init__.py
-│   │   ├── embedder.py               # SentenceTransformer embedding + chunk formatting
-│   │   └── vectorstore.py            # ChromaDB in-memory collection management
-│   ├── repo/
-│   │   ├── __init__.py
-│   │   └── loader.py                 # GitHub shallow clone + ZIP extraction + validation
-│   └── resilience/
-│       └── rate_limiter.py           # 4-key failover manager with cooldown persistence
-│
-├── my_docstring_project/             # Fine-tuned CodeT5 model weights (git-ignored)
-│   ├── config.json                   # T5ForConditionalGeneration architecture config
-│   ├── generation_config.json        # Decoding parameters
-│   ├── model.safetensors             # ~242 MB model weights
-│   ├── tokenizer.json                # BPE tokenizer vocabulary
-│   ├── tokenizer_config.json         # Tokenizer settings
-│   └── training_args.bin             # Training hyperparameters snapshot
-│
-├── .streamlit/
-│   ├── config.toml                   # Dark theme, monospace font, XSRF protection
-│   └── secrets.toml                  # Streamlit Cloud secrets (git-ignored)
-│
-├── requirements.txt                  # Python dependency manifest
-├── .env.example                      # API key template (see Installation)
-└── .gitignore                        # Comprehensive exclusion rules
-```
-
----
-
-## Installation & Local Setup
-
-### Prerequisites
-
-| Requirement | Version |
+| Stays local | Goes to the cloud model |
 |---|---|
-| Python | 3.12+ |
-| pip | Latest |
-| Git | 2.x+ (for GitHub cloning) |
-| PyTorch | 2.x (CPU or CUDA) |
-| Disk Space | ~500 MB (model weights + dependencies) |
+| Cloning, parsing, docstring drafting | An outline of each file (names, signatures, first docstring lines) for the overview |
+| Writing docstrings back, the patch, coverage | The four retrieved entries closest to each question |
+| Embeddings and the vector index | Function source, only for functions the local model couldn't draft |
 
-### Step 1: Clone the Repository
+Around that boundary sit a few controls, all in [`backend/security.py`](backend/security.py) and [`backend/repo/loader.py`](backend/repo/loader.py):
+
+- **Secret redaction.** Before any text goes to a cloud model, credential values are replaced with `[REDACTED]`: string literals assigned to names like `password` or `api_key`, recognisable key formats (Google, Groq, OpenAI-style, GitHub, AWS, Slack, JWT), private-key blocks and `user:password@` in URLs. Variable names stay, so the model can still explain the code.
+- **Question check.** Questions asking for API keys, passwords, tokens or environment values are refused locally, and so are attempts like "ignore all previous instructions". Whole words are matched, which is why "tokenizer" and "the key functions" pass.
+- **Session isolation.** Each browser session gets its own vector collection; one visitor's question can't retrieve another visitor's code.
+- **No lasting copy.** The scanned source lives in a temporary folder that is deleted after generation, after a failed scan and on "New scan". Folders orphaned by a crash are swept at the next start once they're six hours old.
+- **Input validation.** Only root GitHub HTTPS URLs reach `git`, and a `.zip` is rejected before extraction if it would unpack past the size or entry limits.
+
+> [!WARNING]
+> Redaction recognises common credential formats. It can't promise to catch every secret in arbitrary code, so don't scan a repository that has live credentials committed to it.
+
+## When the cloud says no
+
+Four keys, tried in a fixed order:
+
+```mermaid
+flowchart LR
+    T["Agent task"] --> K1{"GEMINI_1"}
+    K1 -->|ok| Done["Result"]
+    K1 -->|"429 / 503 / quota"| K2{"GEMINI_2"}
+    K2 -->|ok| Done
+    K2 -->|cooling| K3{"GROQ_1"}
+    K3 -->|ok| Done
+    K3 -->|cooling| K4{"GROQ_2"}
+    K4 -->|ok| Done
+    K4 -->|cooling| Wait["All keys cooling<br/>local results kept"]
+```
+
+Gemini keys run `gemini-3.6-flash`; Groq keys run `openai/gpt-oss-120b`. A key that returns a rate limit, quota error or outage is benched for 120 seconds, and the cooldown is written to disk so it survives a rerun. Up to four attempts are made per task.
+
+The router in [`backend/resilience/rate_limiter.py`](backend/resilience/rate_limiter.py) only retries errors that mean "this key is busy or gone". The patterns are matched as whole phrases, because a bare `rate` would also match "failed to gene**rate**" and bench a healthy key. Anything else, a bad prompt or a wrong key for instance, is raised straight away without touching the cooldown state.
+
+With no key configured at all, docstrings are still drafted locally, and the overview and Q&A tell you a key is missing.
+
+## Enterprise demo
+
+The header has a "Sign in" button. It shows how the tool could sit behind roles and an audit trail, and it is a simulation: the accounts are fixed demo users listed on the sign-in page, and only the audit log is actually gated.
+
+Sign in as a developer and your scans, generation runs, exports and questions are recorded with a UTC timestamp. Sign in as the manager and you get the audit log: totals, filters by user, action and severity, a row you can select to read in full, CSV download, and a delete that asks for confirmation and then records itself.
+
+Each question is rated by the same local check that guards Q&A. `CRITICAL` means it asked for secrets or tried to override the assistant, and it was blocked before reaching a model. `WARNING` covers authentication and database topics. Everything else is `INFO`. A failed sign-in is logged as `CRITICAL` too.
+
+## Quick start
+
+You need Python 3.10 or newer and Git.
 
 ```bash
 git clone https://github.com/23IT098-VRAJ/CodeDocAI.git
+```
+
+```bash
 cd CodeDocAI
 ```
 
-### Step 2: Create and Activate a Virtual Environment
-
 ```bash
-# Linux / macOS
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Windows
 python -m venv .venv
-.venv\Scripts\activate
 ```
 
-### Step 3: Install Dependencies
+Activate it with `.venv\Scripts\activate` on Windows or `source .venv/bin/activate` on Linux and macOS, then:
 
 ```bash
-pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-> [!IMPORTANT]
-> If you have a CUDA-capable GPU, install the appropriate PyTorch variant **before** running `pip install -r requirements.txt`:
-> ```bash
-> pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-> ```
+**Keys.** Copy `.env.example` to `.env` and fill in what you have. One key is enough; the others only add failover. Gemini keys come from [Google AI Studio](https://aistudio.google.com/app/apikey) and Groq keys from the [Groq console](https://console.groq.com/keys).
 
-### Step 4: Configure API Keys
-
-Create a `.env` file in the project root with the following keys:
-
-```env
-# .env.example — CodeDocAI API Configuration
-# Obtain Gemini keys from: https://aistudio.google.com/app/apikey
-# Obtain Groq keys from:   https://console.groq.com/keys
-
-GEMINI_API_KEY_1=your_gemini_api_key_1_here
-GEMINI_API_KEY_2=your_gemini_api_key_2_here
-GROQ_API_KEY_1=your_groq_api_key_1_here
-GROQ_API_KEY_2=your_groq_api_key_2_here
-```
-
-> [!NOTE]
-> At minimum, **one Gemini key** is required for architecture synthesis and Q&A. The second Gemini key and both Groq keys provide failover redundancy. The system will operate with a single key but will have no fallback on rate-limit events.
-
-### Step 5: Place Model Weights
-
-The fine-tuned CodeT5 model weights must be placed in the `my_docstring_project/` directory at the project root. The directory should contain:
+**Model weights.** The fine-tuned checkpoint is too large for GitHub, so it isn't in this repository. Put it in a folder named `my_docstring_project/` at the project root:
 
 ```
 my_docstring_project/
 ├── config.json
 ├── generation_config.json
-├── model.safetensors          # ~242 MB — primary weights file
+├── model.safetensors
 ├── tokenizer.json
-├── tokenizer_config.json
-└── training_args.bin
+└── tokenizer_config.json
 ```
 
-> [!TIP]
-> If model weights are unavailable, the system will gracefully fall back to cloud-based docstring generation via the CrewAI Docstring Writer agent. A warning will be logged: `[!] Warning: Local CodeT5 Engine failed to load`. All other pipeline functionality remains fully operational.
+Without the weights the app still runs. Docstrings then come from the cloud fallback, capped at 40 functions per scan, which uses up to five extra requests.
 
-### Step 6: Launch the Application
+**Run.**
 
 ```bash
 streamlit run app/app.py
 ```
 
-The application will start on `http://localhost:8501` with the dark terminal theme applied automatically.
+The app opens at `http://localhost:8501`. The first scan is slower than later ones, since that's when the embedding model loads.
 
----
+> [!TIP]
+> With a CUDA GPU, install the matching PyTorch build before `requirements.txt`. The model moves to the GPU on its own when one is available.
 
-## User Workflow & Walkthrough
+## Configuration
 
-CodeDocAI guides the user through a five-stage sequential workflow, each implemented as an isolated screen renderer with session-state persistence:
+| Setting | Where | Default | Effect |
+|---|---|---|---|
+| `GEMINI_API_KEY_1`, `GEMINI_API_KEY_2` | `.env` | none | Primary cloud model for the overview and Q&A |
+| `GROQ_API_KEY_1`, `GROQ_API_KEY_2` | `.env` | none | Backup when the Gemini keys are cooling |
+| `CODEDOCAI_DISK_CACHE` | `.env` | off | Set to `1` to keep the last scan in `docs_cache.json`. Meant for a single-user machine: the file holds scanned source |
+| `STREAMLIT_SERVER_ADDRESS` | environment | `localhost` | Set to `0.0.0.0` to reach the app from other machines on your network |
+| Upload limit | `.streamlit/config.toml` | 100 MB | Largest `.zip` the uploader accepts |
 
-### 1️⃣ Scan — Repository Ingestion & AST Analysis
+Streamlit secrets work as well: keys in `.streamlit/secrets.toml` take precedence over `.env`.
 
-**Screen:** [`scan.py`](app/screens/scan.py)
-
-The user provides a **public GitHub HTTPS URL** or uploads a **ZIP archive**. The backend:
-
-1. Performs a **shallow clone** (`depth=1`) or in-memory ZIP extraction
-2. Validates the repository against size constraints (≤100 MB, ≤500 `.py` files)
-3. Walks every `.py` file through the AST parser, extracting all function and method nodes
-4. Produces a **scan ledger** — a file-by-file inventory showing function counts and missing docstring counts, color-coded with severity indicators:
-   - 🟢 **Green** — Fully documented
-   - 🟡 **Amber** — Partially documented
-   - 🔴 **Red** — Entirely undocumented
-
-### 2️⃣ Generation — Multi-Agent Documentation Pipeline
-
-**Screen:** [`generation.py`](app/screens/generation.py)
-
-Upon clicking **"GENERATE DOCUMENTATION"**, the master [`pipeline.py`](backend/pipeline.py) orchestrator executes:
-
-1. **Local CodeT5 Inference** — Each undocumented function is passed through the fine-tuned model with beam search decoding
-2. **Cloud Fallback** — If local generation fails for any function, the Docstring Writer CrewAI agent takes over
-3. **ChromaDB Vector Indexing** — All functions (with generated or existing docstrings) are chunked and embedded into an in-memory vector collection
-4. **CrewAI Architecture Synthesis** — The Explainer agent reads up to 8 files of context and produces a structured module overview
-
-A **live terminal-style progress feed** displays each pipeline step in real time, capped at 8 visible lines.
-
-### 3️⃣ Docs — Generated Documentation Viewer
-
-**Screen:** [`docs.py`](app/screens/docs.py)
-
-Displays the complete generated documentation:
-
-- **Architecture Overview** — The CrewAI-synthesized module overview rendered as formatted Markdown
-- **Function Docstrings** — Grouped by file, each function is shown in an expandable panel with:
-  - The generated docstring (flagged with a 🤖 **AI DRAFT** badge for model-generated content)
-  - The original source code
-
-### 4️⃣ Ask the Codebase — RAG-Powered Q&A
-
-**Screen:** [`qa.py`](app/screens/qa.py)
-
-An interactive chat interface where users ask natural language questions about the scanned codebase. The system:
-
-1. Queries ChromaDB for the **top-3 semantically similar** code chunks
-2. Injects the retrieved context into the CrewAI QA agent prompt
-3. Returns a structured answer with **citation pills** formatted as `path/file.py::function_name()`
-
-Pre-seeded example queries are provided as clickable chips:
-- *"How does the AST parser handle nested definitions?"*
-- *"What model fine-tuning parameters are used?"*
-- *"Where is the ChromaDB embedding initialized?"*
-
-### 5️⃣ Export — Session Archive
-
-**Screen:** [`export.py`](app/screens/export.py)
-
-Compiles the entire session into a downloadable ZIP containing:
-
-| File | Contents |
-|---|---|
-| `documentation.md` | Full generated module overview + all function docstrings |
-| `qa_transcript.md` | Chronological Q&A log with citations |
-| `metadata.json` | Pipeline telemetry (model used, vector store, timestamps, session stats) |
-
-Clicking **"NEW SCAN"** purges all session state, clears the ChromaDB collection, and resets the application to a clean state.
-
----
-
-## Fault Tolerance & Resilience Engineering
-
-The [`rate_limiter.py`](backend/resilience/rate_limiter.py) module implements a production-grade failover system that ensures pipeline continuity under API pressure.
-
-### Failover Cascade Hierarchy
+## Project layout
 
 ```
-Priority 1:  GEMINI_1  →  gemini/gemini-3.6-flash
-Priority 2:  GEMINI_2  →  gemini/gemini-3.6-flash
-Priority 3:  GROQ_1    →  groq/llama-3.1-8b-instant
-Priority 4:  GROQ_2    →  groq/llama-3.1-8b-instant
+CodeDocAI/
+├── app/
+│   ├── app.py                  page setup, session handling, routing, model loading
+│   ├── styles.py               the whole stylesheet, built on three layers of design tokens
+│   ├── helpers.py              nav rail, new-scan confirmation, Markdown rendering, audit log
+│   └── screens/
+│       ├── landing.py          first page
+│       ├── scan.py             URL or .zip input, the file ledger
+│       ├── generation.py       live progress, partial results, overview retry
+│       ├── docs.py             overview, coverage, docstring browser with filter
+│       ├── qa.py               questions, answers, citations
+│       ├── export.py           builds the archive
+│       ├── architecture.py     "How it works" page
+│       ├── login.py            demo sign-in
+│       ├── manager_dashboard.py  audit log
+│       └── foundation.py       reference page for the design tokens
+│
+├── backend/
+│   ├── pipeline.py             the scan, as a generator of events
+│   ├── parser/extractor.py     AST walk: functions, methods, classes
+│   ├── writer.py               inserts docstrings, builds the patch
+│   ├── coverage.py             before and after counts
+│   ├── outline.py              per-file outlines for the overview and the index
+│   ├── security.py             question check, secret redaction
+│   ├── rag/vectorstore.py      ChromaDB collections
+│   ├── repo/loader.py          clone, extract, validate, clean up
+│   ├── agents/
+│   │   ├── explainer.py        repository overview
+│   │   ├── qa.py               grounded answers, numbered sources
+│   │   └── docwriter.py        batched docstring fallback
+│   ├── model/summarizer.py     bridge to the fallback agent
+│   └── resilience/rate_limiter.py  key failover and cooldowns
+│
+├── .streamlit/config.toml      theme and server settings
+├── .env.example                template for your keys
+└── requirements.txt
 ```
 
-### How It Works
+## Known limits
 
-```mermaid
-flowchart LR
-    A["CrewAI Task<br/>(docwriter · explainer · qa)"] --> B{"execute_with_failover()"}
-    B --> C["_get_active_llm()"]
-    C --> D{"GEMINI_1<br/>available?"}
-    D -->|"Yes"| E["Route to GEMINI_1"]
-    D -->|"Cooling"| F{"GEMINI_2<br/>available?"}
-    F -->|"Yes"| G["Route to GEMINI_2"]
-    F -->|"Cooling"| H{"GROQ_1<br/>available?"}
-    H -->|"Yes"| I["Route to GROQ_1"]
-    H -->|"Cooling"| J{"GROQ_2<br/>available?"}
-    J -->|"Yes"| K["Route to GROQ_2"]
-    J -->|"Cooling"| L["ALL_APIS_COOLING<br/>(Wait 2 min)"]
+Better to read these here than to discover them halfway through a demo.
 
-    E --> M{"Success?"}
-    M -->|"Yes"| N["Return Result"]
-    M -->|"429 / 503 / 404"| O["Mark Cooling<br/>(120s)"]
-    O --> C
-```
-
-### Transient Error Detection
-
-The failover engine catches and retries on the following error signatures:
-
-| Error Pattern | Source |
-|---|---|
-| `429` | Gemini / Groq rate limit exceeded |
-| `quota` | API quota exhaustion |
-| `rate` | Generic rate limiting |
-| `503` / `unavailable` | Temporary service outage |
-| `404` / `model_not_found` / `not found` | Groq model endpoint drops |
-
-### Cooldown Mechanics
-
-- **Cooldown Duration:** 120 seconds (2 minutes) per key
-- **Persistence:** Cooldown state is written to `api_cooldowns.json` and survives Streamlit reruns
-- **Max Retries:** 4 attempts per `execute_with_failover()` call
-- **Graceful Exhaustion:** If all 4 keys are simultaneously cooling, the system raises a user-facing message: *"All API keys are currently in a 2-minute cooldown. Please wait."*
-
-> [!WARNING]
-> The system distinguishes between **transient errors** (retryable) and **terminal errors** (non-retryable). A malformed prompt or authentication failure will immediately propagate without entering the retry loop.
-
----
+- Python only. The parser is Python's own `ast`, and a file with a syntax error is skipped.
+- Docstrings are one-line summaries. No parameter or return sections.
+- Class docstrings aren't drafted, for the reason given under [The local model](#the-local-model).
+- Public GitHub repositories only; there's no token support for private ones. A `.zip` upload gets around that.
+- Tests, `__init__.py`, virtual environments and hidden folders are skipped on purpose.
+- Q&A sees four entries per question. If the answer depends on code spread across many files, it can miss part of it.
+- The vector index lives in memory. Restart the server and scans have to be run again.
+- The enterprise layer is a demonstration with fixed accounts, not access control.
 
 ## License
 
-This project is licensed under the **MIT License**.
-
-```
-MIT License
-
-Copyright (c) 2026 CodeDocAI Contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
----
-
-## Contributing
-
-Contributions are welcome. Please follow these guidelines:
-
-1. **Fork** the repository and create a feature branch from `main`
-2. **Write tests** for any new backend logic (see existing `test_*.py` patterns)
-3. **Follow the existing code style** — all modules use Google-style docstrings, type hints, and explicit error handling
-4. **Do not commit** `.env`, `secrets.toml`, model weights (`my_docstring_project/`), or `api_cooldowns.json`
-5. **Open a Pull Request** with a clear description of the change, the problem it solves, and any breaking changes
-
-### Development Quick Start
-
-```bash
-git clone https://github.com/23IT098-VRAJ/CodeDocAI.git
-cd CodeDocAI
-python -m venv .venv && source .venv/bin/activate  # or .venv\Scripts\activate on Windows
-pip install -r requirements.txt
-cp .env.example .env  # Edit with your API keys
-streamlit run app/app.py
-```
-
----
+MIT. See [LICENSE](LICENSE).
 
 <p align="center">
-  <sub>Built with CodeT5 · CrewAI · ChromaDB · Gemini · Groq · Streamlit</sub>
+  <sub>CodeT5 · CrewAI · ChromaDB · Sentence Transformers · Gemini · Groq · Streamlit</sub>
 </p>

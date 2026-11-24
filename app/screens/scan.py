@@ -3,27 +3,40 @@ screens/scan.py -- CodeDocAI
 Scan screen renderer with Tabbed UI and Live Backend Streaming.
 """
 
+import html as _html
+import logging
 import math as _math
-import os
-import sys
 import tempfile
 from pathlib import Path
 
 import streamlit as st
 
-# Ensure project root is in sys.path so backend is accessible
-_ROOT_DIR = str(Path(__file__).resolve().parents[2])
-if _ROOT_DIR not in sys.path:
-    sys.path.insert(0, _ROOT_DIR)
+from backend.parser.extractor import extract_definitions
+from backend.repo.loader import (
+    TEMP_PREFIX,
+    RepoValidationError,
+    cleanup_repo,
+    clone_github_repo,
+    extract_zip,
+    read_source,
+)
+from helpers import audit_event, new_scan_button, page_heading, render_stats
 
-try:
-    from helpers import render_nav_rail, _reset_to_new_scan
-except ImportError:
-    from app.helpers import render_nav_rail, _reset_to_new_scan
+logger = logging.getLogger(__name__)
 
-from backend.repo.loader import extract_zip, clone_github_repo, RepoValidationError
-from backend.pipeline import run_pipeline
-from backend.parser.extractor import extract_functions
+SOURCE_MODES = ["GitHub URL", "Upload .zip"]
+
+
+def estimate_generation_time(missing_count: int) -> str:
+    """
+    Rough wall-clock estimate for the generation step: batched CodeT5 drafting on a
+    CPU (about 0.3 s per function, measured at under 0.2 s) plus a fixed allowance
+    for loading the vector index and one cloud request for the overview.
+    """
+    seconds = 20 + 0.3 * missing_count
+    if seconds < 60:
+        return "under a minute"
+    return f"~{_math.ceil(seconds / 60)} min"
 
 
 def render_scan() -> None:
@@ -31,96 +44,66 @@ def render_scan() -> None:
     if st.session_state.get("current_screen", "scan") != "scan":
         return
 
-    # Shared Top Navigation Rail
-    render_nav_rail("scan")
-
     status = st.session_state.get("scan_status", "idle")
 
     # =====================================================================
     # INPUT STATE
     # =====================================================================
     if status != "populated":
-        st.markdown(
-            '<div class="section-label">PROVIDE YOUR CODE</div>'
-            '<p class="scan-intro">Select your repository source below.</p>'
-            '<div class="scan-parameters" style="margin-bottom: 20px;"><span style="color: var(--accent-amber); font-weight: 500;">TARGET PARAMETERS:</span> .py files only &middot; Max 100MB / 500 files per scan</div>',
-            unsafe_allow_html=True,
-        )
+        page_heading("New scan")
 
-        github_url = st.text_input(
-            "GITHUB REPOSITORY URL",
-            placeholder="https://github.com/username/repository",
-            key="scan_github_url_input",
-            label_visibility="collapsed"
-        )
-        st.markdown(
-            '<div class="scan-microcopy" style="margin-top: 10px;">'
-            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 2px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>'
-            '<span><span style="color: var(--text-primary); font-weight: 500;">Requires root HTTPS URL.</span> For private repositories, use the .ZIP upload below.</span>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
+        source_mode = st.segmented_control(
+            "Source", SOURCE_MODES, default=SOURCE_MODES[0], required=True,
+            key="scan_source_mode", label_visibility="collapsed",
+        ) or SOURCE_MODES[0]
+        github_url, uploaded_file = "", None
+        error_field = st.session_state.get("scan_error_field")
+        with st.container(border=True, key="scan_source_card"):
+            if source_mode == SOURCE_MODES[0]:
+                github_url = st.text_input(
+                    "GitHub repository URL",
+                    placeholder="https://github.com/owner/repository",
+                    key="scan_github_url_input",
+                )
+                hint = "Public repository · Python · up to 100 MB and 500 files"
+            else:
+                uploaded_file = st.file_uploader("Project .zip", type=["zip"], key="scan_file_upload")
+                hint = "A .zip of the project · Python · up to 100 MB and 500 files. Works for private code."
+            # An error sits under the field it is about; role="alert" announces it to screen readers.
+            if status == "error" and error_field == ("url" if source_mode == SOURCE_MODES[0] else "zip"):
+                err_msg = st.session_state.get("scan_error_message", "The scan failed.")
+                st.markdown(f'<p class="scan-error-line" role="alert">{_html.escape(err_msg)}</p>',
+                            unsafe_allow_html=True)
+            else:
+                st.caption(hint)
 
-        # Visual OR Divider
-        st.markdown(
-            '<div class="scan-or-divider">'
-            '<div class="scan-or-line"></div>'
-            '<div class="scan-or-label">OR UPLOAD .ZIP</div>'
-            '<div class="scan-or-line"></div>'
-            '</div>',
-            unsafe_allow_html=True
-        )
-
-        uploaded_file = st.file_uploader(
-            label="Upload project (.zip)",
-            type=["zip"],
-            key="scan_file_upload",
-            label_visibility="collapsed"
-        )
-
-        # Pipeline Preview
-        st.markdown(
-            '<div class="scan-preview-row" style="margin-top: 30px;">'
-            '<div class="scan-preview-step"><span style="color: var(--text-primary);">[01]</span> INGEST REPOSITORY</div>'
-            '<div class="scan-preview-arrow">→</div>'
-            '<div class="scan-preview-step"><span style="color: var(--text-primary);">[02]</span> AST ISOLATION</div>'
-            '<div class="scan-preview-arrow">→</div>'
-            '<div class="scan-preview-step"><span style="color: var(--text-primary);">[03]</span> FLAG MISSING SIGNATURES</div>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-
-        st.markdown('<div id="cta-generate-marker"></div>', unsafe_allow_html=True)
-        
-        # --- ERROR DISPLAY MOVED HERE ---
-        if status == "error":
-            err_msg = st.session_state.get("scan_error_message", "An error occurred.")
-            st.markdown(f'<p class="scan-error-line" style="margin-bottom: 16px;">{err_msg}</p>', unsafe_allow_html=True)
-            
         # Trigger Backend Pipeline
-        if st.button("SCAN REPOSITORY", key="cta_scan_repo"):
+        if st.button("Scan repository", key="cta_scan_repo", type="primary"):
             has_zip = uploaded_file is not None
             has_url = bool(github_url and github_url.strip())
 
             if not has_zip and not has_url:
                 st.session_state["scan_status"] = "error"
-                st.session_state["scan_error_message"] = "Please provide a GitHub URL or upload a .ZIP file."
+                st.session_state["scan_error_field"] = "url" if source_mode == SOURCE_MODES[0] else "zip"
+                st.session_state["scan_error_message"] = (
+                    "Paste a GitHub URL first." if source_mode == SOURCE_MODES[0] else "Choose a .zip first."
+                )
                 st.rerun()
 
-            temp_dir = tempfile.mkdtemp(prefix="codedocai_scan_")
+            temp_dir = tempfile.mkdtemp(prefix=TEMP_PREFIX)
             repo_source = None
 
             try:
-                with st.status("Processing Repository...", expanded=True) as status_box:
+                with st.status("Scanning the repository", expanded=True) as status_box:
                     # 1. Loading Phase
                     if has_zip:
-                        status_box.write(f"📦 Extracting `{uploaded_file.name}`...")
+                        status_box.write(f"Extracting `{uploaded_file.name}`")
                         uploaded_file.seek(0)
                         repo_source = extract_zip(uploaded_file, temp_dir)
                         st.session_state["scan_github_url"] = uploaded_file.name
                     else:
                         clean_url = github_url.strip()
-                        status_box.write(f"🐙 Cloning `{clean_url}`...")
+                        status_box.write(f"Cloning `{clean_url}`")
                         repo_source = clone_github_repo(clean_url, temp_dir)
                         st.session_state["scan_github_url"] = clean_url
 
@@ -132,21 +115,22 @@ def render_scan() -> None:
                     # Pre-calculate file function totals so the ledger renders correctly
                     # Calculate AST statistics without running heavy generation pipeline
                     ledger_results = []
+                    definitions_by_file = {}
                     total_missing = 0
                     total_functions = 0
 
                     for rel_p in py_files:
                         norm_p = rel_p.replace("\\", "/")
-                        abs_p = os.path.join(local_path, rel_p)
-                        status_box.write(f"🔍 Parsing AST: `{norm_p}`")
-                        
+                        status_box.write(f"Parsing `{norm_p}`")
+
                         try:
-                            with open(abs_p, "r", encoding="utf-8", errors="ignore") as f:
-                                content = f.read()
-                            funcs = extract_functions(content, norm_p)
+                            content = read_source(Path(local_path, rel_p))
+                            definitions = extract_definitions(content, norm_p)
+                            definitions_by_file[norm_p] = definitions  # the pipeline reuses these
+                            funcs = [d for d in definitions if d["kind"] != "class"]
                             func_count = len(funcs)
                             missing_count = sum(1 for fn in funcs if not fn.get("has_docstring", False))
-                            
+
                             if func_count > 0:
                                 ledger_results.append({
                                     "path": norm_p,
@@ -155,9 +139,10 @@ def render_scan() -> None:
                                 })
                                 total_functions += func_count
                                 total_missing += missing_count
-                        except Exception as e:
-                            print(f"Error parsing {norm_p}: {e}")
+                        except Exception as error:  # noqa: BLE001 - one unreadable file must not fail the scan
+                            logger.warning("Could not parse %s: %s", norm_p, error)
 
+                    repo_source["definitions"] = definitions_by_file
                     file_count = len(ledger_results)
                     st.session_state["scan_results"] = ledger_results
                     st.session_state["scan_summary"] = {
@@ -166,73 +151,74 @@ def render_scan() -> None:
                     }
                     st.session_state["scan_status"] = "populated"
                     st.session_state["scan_error_message"] = None
-                    status_box.update(label="Repository scan complete!", state="complete", expanded=False)
+                    audit_event(
+                        "REPO_SCAN",
+                        f"Scanned '{st.session_state['scan_github_url']}': {file_count} files with functions, "
+                        f"{total_functions} functions, {total_missing} missing docstrings.",
+                    )
+                    status_box.update(label="Scan finished", state="complete", expanded=False)
                     st.rerun()
 
             except RepoValidationError as e:
+                cleanup_repo(temp_dir)
+                st.session_state["repo_source"] = None
                 st.session_state["scan_status"] = "error"
+                st.session_state["scan_error_field"] = "zip" if has_zip else "url"
                 st.session_state["scan_error_message"] = str(e)
                 st.rerun()
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - shown to the visitor under the field that caused it
+                cleanup_repo(temp_dir)
+                st.session_state["repo_source"] = None
                 st.session_state["scan_status"] = "error"
-                st.session_state["scan_error_message"] = f"Repository scan failed: {str(e)}"
+                st.session_state["scan_error_field"] = "zip" if has_zip else "url"
+                st.session_state["scan_error_message"] = f"The scan failed: {e}"
                 st.rerun()
-
-        # Security Assurance Tag
-        st.markdown(
-            '<div class="scan-security-tag">'
-            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4CAF50" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>'
-            '<span><span style="color: #4CAF50; font-weight: 500;">SESSION ISOLATED:</span> Source files are processed in memory and immediately discarded. Zero disk retention.</span>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
 
     # =====================================================================
     # RESULTS STATE
     # =====================================================================
     else:
-        st.markdown('<div class="section-label">SOURCE CODE</div>', unsafe_allow_html=True)
+        page_heading("Scan results")
 
-        source_name = "Uploaded .zip archive"
-        if st.session_state.get("scan_github_url", "").strip():
-            source_name = st.session_state.get("scan_github_url", "").strip()
-
-        st.markdown(
-            f'<div style="display: flex; align-items: center; gap: 16px; margin-bottom: var(--space-4);">'
-            f'<span style="font-family: \'IBM Plex Mono\', monospace; font-size: 0.85rem; color: var(--text-primary);">{source_name}</span>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-
-        st.markdown('<div id="cta-secondary-marker"></div>', unsafe_allow_html=True)
-        if st.button("NEW SCAN", key="cta_scan_reset"):
-            st.session_state["repo_source"] = None
-            st.session_state["repo_overview"] = None
-            try:
-                from helpers import _reset_to_new_scan
-            except ImportError:
-                from app.helpers import _reset_to_new_scan
-            _reset_to_new_scan()
+        source_name = st.session_state.get("scan_github_url", "").strip() or "Uploaded .zip"
+        source_name = source_name.removeprefix("https://github.com/")
+        with st.container(horizontal=True, vertical_alignment="center", gap="small", key="scan_source"):
+            st.markdown(f'<span class="repo-chip">{_html.escape(source_name)}</span>',
+                        unsafe_allow_html=True, width="content")
+            # The reset itself deletes the scanned copy, so repo_source must still be set when it runs.
+            new_scan_button("New scan", key="cta_scan_reset", type="tertiary", icon=":material/refresh:")
 
         results = st.session_state.get("scan_results", [])
 
-        # Removed redundant error display from here. 
+        # Removed redundant error display from here.
         # Only rendering the success ledger:
         if status == "populated" and results is not None:
             summary = st.session_state.get("scan_summary") or {}
             file_count = summary.get("file_count", len(results))
             missing_count = summary.get("missing_count", 0)
 
-            if missing_count > 0:
-                summary_text = f'{file_count} files scanned\u2009\u00B7\u2009{missing_count} functions missing docstrings'
-            else:
-                summary_text = f'{file_count} files scanned\u2009\u00B7\u2009fully documented'
+            # Once documentation has been generated, the ledger shows what is documented
+            # now, not what was missing when the repository was scanned.
+            coverage = (st.session_state.get("pipeline_results") or {}).get("coverage") or {}
+            generated = bool(st.session_state.get("generation_complete")) and bool(coverage.get("files"))
+            if generated:
+                documented = {row["path"]: row["functions_after"] for row in coverage["files"]}
+                results = [
+                    {**row, "missing": max(0, row.get("functions", 0) - documented[row["path"]])}
+                    if row["path"] in documented else row
+                    for row in results
+                ]
+                missing_count = sum(row["missing"] for row in results)
 
-            ledger_html = (
-                '<div id="ghost-scan-results" class="scan-results-section">'
-                '<div class="section-label">SCAN RESULTS</div>'
-                f'<p class="scan-summary">{summary_text}</p>'
-            )
+            stats = [("Files", file_count)]
+            if generated:
+                stats += [("Drafted", coverage.get("docstrings_drafted", 0)), ("Still missing", missing_count)]
+            else:
+                stats += [("Missing docstrings", missing_count)]
+                if missing_count:
+                    stats.append(("Estimated time", estimate_generation_time(missing_count)))
+            render_stats(stats, key="scan_stats")
+            ledger_html = '<div id="ghost-scan-results" class="scan-results-section">'
 
             for i, row in enumerate(results):
                 idx_str = str(i + 1).zfill(2)
@@ -249,11 +235,11 @@ def render_scan() -> None:
 
                 if missing > 0:
                     meta_class = "ledger-meta-missing"
-                    meta_text = f'{funcs} functions\u2009\u00B7\u2009{missing} missing docstrings'
+                    meta_text = f'{missing} of {funcs} missing'
                 else:
                     meta_class = "ledger-meta-clean"
-                    meta_text = f'{funcs} functions\u2009\u00B7\u2009fully documented'
-                
+                    meta_text = f'{funcs} documented'
+
                 ledger_html += (
                     f'<div class="ledger-row">'
                     f'<div class="ledger-index"><span class="severity-pip {pip_color}"></span>{idx_str}</div>'
@@ -264,30 +250,20 @@ def render_scan() -> None:
             ledger_html += '</div>'
             st.markdown(ledger_html, unsafe_allow_html=True)
 
-            if missing_count > 0:
-                est_minutes = max(1, _math.ceil(missing_count / 10))
-                plural = "s" if missing_count != 1 else ""
-                est_html = (
-                    '<div id="ghost-scan-estimate" class="scan-estimate-section">'
-                    '<div class="section-label">ESTIMATED GENERATION TIME</div>'
-                    f'<p class="scan-estimate-body">{missing_count} draft{plural} to generate \u00B7 '
-                    f'~{est_minutes} min (constrained by ML processing time)</p>'
-                    '</div>'
-                )
-                st.markdown(est_html, unsafe_allow_html=True)
-            else:
+            st.caption("Skipped: `__init__.py`, tests, virtual environments and hidden folders.")
+            if not generated and missing_count == 0:
                 st.markdown(
-                    '<div id="ghost-scan-estimate"><p class="scan-estimate-clean">Every file is already documented \u2014 nothing to draft.</p></div>',
+                    '<p class="scan-estimate-clean">Every function already has a docstring, so there’s nothing to draft.</p>',
                     unsafe_allow_html=True,
                 )
 
-            st.markdown(
-                '<div class="system-note">SYSTEM NOTE: AST parser automatically bypassed __init__.py, test directories, and standard library imports.</div>',
-                unsafe_allow_html=True,
-            )
-
-            st.markdown('<div id="cta-generate-marker"></div>', unsafe_allow_html=True)
-            if st.button("GENERATE DOCUMENTATION", key="cta_generate_docs"):
+            if st.session_state.get("generation_complete", False):
+                # The scanned source copy is deleted once generation finishes,
+                # so a finished scan links to its docs instead of generating again.
+                if st.button("View documentation", key="cta_scan_view_docs", type="primary"):
+                    st.session_state["current_screen"] = "docs"
+                    st.rerun()
+            elif st.button("Generate documentation", key="cta_generate_docs", type="primary"):
                 st.session_state["generation_attempt"] = 0
                 st.session_state["generation_complete"] = False
                 st.session_state["qa_chat_history"] = []

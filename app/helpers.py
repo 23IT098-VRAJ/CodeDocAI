@@ -1,84 +1,55 @@
 """
 helpers.py -- CodeDocAI
-Navigation rail, state reset, syntax highlighting, generation log builder,
-and docs markdown builder.
+Top bar, state reset, Markdown rendering for answers, docs markdown
+builder, and the audit logger.
 """
 
-import html as _html
-import math as _math
-import re as _re
 import datetime
-import json
-import os
-import time
+import html as _html
+import logging
+import re as _re
+from pathlib import Path
 
 import streamlit as st
-import streamlit.components.v1 as components
 
-_AUDIT_FILE = "enterprise_audit.json"
+from backend.storage import read_json, update_json
 
-try:
-    from fixtures import _FIXTURE_FUNCTIONS
-except ImportError:
-    from app.fixtures import _FIXTURE_FUNCTIONS
+logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Timing constants for the typewriter log -- kept in sync with JS.
-# ---------------------------------------------------------------------------
-_MS_PER_CHAR   = 16    # milliseconds typed per character
-_PAUSE_PER_LINE = 200  # milliseconds pause after each line finishes
-
-
-# ---------------------------------------------------------------------------
-# Syntax highlighting
-# ---------------------------------------------------------------------------
-def _highlight_python(source_code: str) -> str:
-    """
-    Apply minimal syntax highlighting to Python source code using design tokens:
-    - Keywords: --accent-amber (.code-kw)
-    - Strings: --text-muted (.code-str)
-    - Everything else: --text-primary
-    HTML is escaped first to prevent injection.
-    """
-    escaped = _html.escape(source_code, quote=False)
-
-    str_pattern = r'(f?"[^"\\]*(?:\\.[^"\\]*)*"|f?\'[^\'\\]*(?:\\.[^\'\\]*)*\')'
-    kw_list = [
-        "def", "return", "if", "for", "in", "global", "import", "from",
-        "and", "or", "not", "False", "True", "None", "as", "with",
-        "class", "elif", "else", "try", "except", "finally", "raise",
-        "while", "break", "continue", "pass", "lambda", "is"
-    ]
-    kw_pattern = r'\b(' + '|'.join(kw_list) + r')\b'
-
-    tokens = []
-    last_idx = 0
-    for match in _re.finditer(str_pattern, escaped):
-        start, end = match.span()
-        if start > last_idx:
-            non_str = escaped[last_idx:start]
-            highlighted_kw = _re.sub(kw_pattern, r'<span class="code-kw">\1</span>', non_str)
-            tokens.append(highlighted_kw)
-        str_val = match.group(0)
-        tokens.append(f'<span class="code-str">{str_val}</span>')
-        last_idx = end
-
-    if last_idx < len(escaped):
-        non_str = escaped[last_idx:]
-        highlighted_kw = _re.sub(kw_pattern, r'<span class="code-kw">\1</span>', non_str)
-        tokens.append(highlighted_kw)
-
-    return "".join(tokens)
+_ROOT_DIR = Path(__file__).resolve().parents[1]
+_AUDIT_FILE = _ROOT_DIR / "enterprise_audit.json"
 
 
 # ---------------------------------------------------------------------------
 # State reset (Comprehensive Session Wipe)
 # ---------------------------------------------------------------------------
+def collection_name_for(session_id: str) -> str:
+    """Name of the ChromaDB collection that belongs to a browser session."""
+    return f"codedocai_{session_id}"
+
+
+def session_collection_name() -> str:
+    """Name of the ChromaDB collection that belongs to this browser session."""
+    return collection_name_for(st.session_state.get("session_id", "default"))
+
+
 def _reset_to_new_scan() -> None:
     """
-    Completely purge all scan, pipeline, and RAG data from session state
+    Completely purge all scan, pipeline, and RAG data from session state,
+    delete the scanned source copy and this session’s vector index,
     and navigate cleanly back to the Scan screen.
     """
+    from backend.rag.vectorstore import reset_collection
+    from backend.repo.loader import cleanup_repo
+
+    cleanup_repo((st.session_state.get("repo_source") or {}).get("local_path"))
+    if st.session_state.get("generation_complete") or st.session_state.get("pipeline_results"):
+        reset_collection(session_collection_name())
+
+    st.session_state["overview_context"] = None
+    st.session_state["overview_error"] = None
+    st.session_state["qa_answer_cache"] = {}
+    st.session_state["_confirm_new_scan"] = None
     st.session_state["scan_status"] = "idle"
     st.session_state["scan_results"] = None
     st.session_state["scan_summary"] = None
@@ -94,332 +65,310 @@ def _reset_to_new_scan() -> None:
     st.rerun()
 
 
-# ---------------------------------------------------------------------------
-# Navigation Rail
-# ---------------------------------------------------------------------------
-def render_nav_rail(current_screen: str) -> None:
-    scan_status = st.session_state.get("scan_status", "idle")
-    is_scan_populated = (scan_status == "populated")
-    is_gen_complete = st.session_state.get("generation_complete", False)
+DISCARD_LABEL = "Discard scan"
 
-    cols = st.columns(
-        [2.5, 1.2, 0.3, 1.8, 0.3, 1.1, 0.3, 1.0, 0.3, 1.3],
-        vertical_alignment="center",
+
+def new_scan_pending(key: str) -> bool:
+    """True while this button’s confirmation dialog is open."""
+    return st.session_state.get("_confirm_new_scan") == key
+
+
+def _close_new_scan_dialog() -> None:
+    st.session_state["_confirm_new_scan"] = None
+
+
+@st.dialog("Discard this scan?", on_dismiss=_close_new_scan_dialog)
+def _new_scan_dialog(key: str) -> None:
+    st.markdown(
+        '<p class="dialog-body">Its documentation, search index and Q&amp;A history are deleted. '
+        "Export first to keep them.</p>",
+        unsafe_allow_html=True,
     )
-
-    with cols[0]:
-        st.markdown('<div id="rail-wordmark"></div>', unsafe_allow_html=True)
-        if st.button("CodeDocAI", key="rail_home"):
-            st.session_state["current_screen"] = "landing"
+    with st.container(horizontal=True, horizontal_alignment="right", gap="small", key=f"{key}_confirm_row"):
+        if st.button("Cancel", key=f"{key}_cancel", type="secondary"):
+            _close_new_scan_dialog()
             st.rerun()
+        # The danger_* key gives this button the danger colour instead of the brand accent.
+        if st.button(DISCARD_LABEL, key=f"danger_{key}_confirm", type="primary"):
+            _close_new_scan_dialog()
+            _reset_to_new_scan()
 
-    reachability = {
-        "scan": True,
-        "generation": is_scan_populated,
-        "docs": is_gen_complete,
-        "qa": is_gen_complete,
-        "export": is_gen_complete,
-    }
 
-    steps = [
-        ("scan",       "SCAN",     "rail_scan",     "rail-step-scan"),
-        ("generation", "GENERATE", "rail_generate", "rail-step-generate"),
-        ("docs",       "DOCS",     "rail_docs",     "rail-step-docs"),
-        ("qa",         "Q&A",      "rail_qa",       "rail-step-qa"),
-        ("export",     "EXPORT",   "rail_export",   "rail-step-export"),
-    ]
+def new_scan_button(label: str, key: str, **button_kwargs) -> None:
+    """
+    A "new scan" button that asks before throwing work away.
 
-    col_indices   = [1, 3, 5, 7, 9]
-    arrow_indices = [2, 4, 6, 8]
-
-    svg_chevron = (
-        '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" '
-        'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-        '<polyline points="9 18 15 12 9 6"></polyline></svg>'
+    Starting a new scan deletes the generated documentation, the vector index and
+    the Q&A history of this session, and it cannot be undone. When the session
+    holds any of that, the first click opens a confirmation dialog; the reset
+    happens on the explicit confirmation. With nothing to lose, it resets at once.
+    The dialog is opened from session state, so it stays open across reruns until
+    it is answered or dismissed.
+    """
+    has_work = bool(
+        st.session_state.get("generation_complete")
+        or st.session_state.get("pipeline_results")
+        or st.session_state.get("qa_chat_history")
     )
-    for arr_col_idx in arrow_indices:
-        with cols[arr_col_idx]:
-            st.markdown(f'<div class="rail-arrow">{svg_chevron}</div>', unsafe_allow_html=True)
+    if st.button(label, key=key, **button_kwargs):
+        if has_work:
+            st.session_state["_confirm_new_scan"] = key
+        else:
+            _reset_to_new_scan()
+    if new_scan_pending(key):
+        _new_scan_dialog(key)
 
-    for i, (scr_key, label, btn_key, marker_id) in enumerate(steps):
-        col = cols[col_indices[i]]
-        with col:
-            if current_screen == scr_key:
-                st.markdown(f'<div class="rail-current">{label}</div>', unsafe_allow_html=True)
-            elif reachability.get(scr_key, False):
-                st.markdown(f'<div id="{marker_id}"></div>', unsafe_allow_html=True)
-                if st.button(label, key=btn_key):
-                    st.session_state["current_screen"] = scr_key
-                    st.rerun()
+
+# ---------------------------------------------------------------------------
+# Stats and toasts
+# ---------------------------------------------------------------------------
+def render_stats(items: list[tuple[str, object]], key: str | None = None) -> None:
+    """
+    One row of figures in the shared stat style: the value in tabular mono, the
+    label under it in muted sentence case. items holds (label, value) pairs; a
+    third element, when present, is a short note shown after the label.
+    """
+    cells = []
+    for item in items:
+        label, value = item[0], item[1]
+        note = f'<span class="stat-note">{_html.escape(str(item[2]))}</span>' if len(item) > 2 and item[2] else ""
+        cells.append(
+            '<div class="stat">'
+            f'<span class="stat-value">{_html.escape(str(value))}</span>'
+            f'<span class="stat-label">{_html.escape(label)}{note}</span>'
+            '</div>'
+        )
+    html_text = f'<div class="stat-row" role="list">{"".join(cells)}</div>'.replace('<div class="stat">', '<div class="stat" role="listitem">')
+    if key:
+        with st.container(key=key):
+            st.markdown(html_text, unsafe_allow_html=True)
+    else:
+        st.markdown(html_text, unsafe_allow_html=True)
+
+
+def queue_toast(message: str, icon: str = ":material/check_circle:") -> None:
+    """A toast shown on the next run; use it before st.rerun(), which would drop one shown now."""
+    st.session_state.setdefault("_toasts", []).append((message, icon))
+
+
+def show_queued_toasts() -> None:
+    for message, icon in st.session_state.pop("_toasts", []):
+        st.toast(message, icon=icon)
+
+
+# ---------------------------------------------------------------------------
+# Top bar and page headings
+# ---------------------------------------------------------------------------
+def render_top_bar(current_screen: str, offline: str | None = None) -> None:
+    """
+    The sticky, frosted header every screen shares (an inline component), with the
+    command palette mounted beside it. Clicks are handled in callbacks before the
+    screen renders. It replaces the sidebar, so signing in and out happens here.
+    """
+    from components import command_palette, topbar
+
+    with st.container(key="topbar_wrap"):
+        topbar.render(current_screen, offline=offline)
+        command_palette.render(current_screen)
+
+
+def page_heading(title: str, subtitle: str | None = None) -> None:
+    """The screen's real h1, with an optional one-line subtitle under it."""
+    html_text = f'<h1 class="page-h1">{_html.escape(title)}</h1>'
+    if subtitle:
+        html_text += f'<p class="page-sub">{_html.escape(subtitle)}</p>'
+    st.markdown(html_text, unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------------------------
+# Markdown rendering for Q&A answers
+# ---------------------------------------------------------------------------
+def _inline_markdown(text: str) -> str:
+    """Escapes the text, then renders `code`, **bold** and *italic*."""
+    rendered = []
+    for part in _re.split(r"(`[^`]+`)", _html.escape(text, quote=False)):
+        if len(part) > 2 and part.startswith("`") and part.endswith("`"):
+            rendered.append(f"<code>{part[1:-1]}</code>")
+        else:
+            part = _re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", part)
+            part = _re.sub(r"(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?![\w*])", r"<i>\1</i>", part)
+            rendered.append(part)
+    return "".join(rendered)
+
+
+def markdown_to_html(text: str) -> str:
+    """
+    Renders the Markdown a model typically writes in an answer: paragraphs, headings,
+    bullet and numbered lists, fenced code blocks, `code`, **bold** and *italic*.
+
+    Everything is HTML-escaped first, so text from the model or the scanned code can
+    never inject markup. The result contains no line breaks: it is embedded in a
+    larger HTML block, where a blank line would end that block early.
+    """
+    blocks = []
+    paragraph = []
+    items = []
+    list_tag = None
+    code_lines = None
+
+    def flush_paragraph():
+        if paragraph:
+            blocks.append(("p", "<br>".join(_inline_markdown(line) for line in paragraph)))
+            paragraph.clear()
+
+    def flush_list():
+        nonlocal list_tag
+        if items:
+            body = "".join(f"<li>{_inline_markdown(item)}</li>" for item in items)
+            blocks.append((list_tag, f"<{list_tag}>{body}</{list_tag}>"))
+            items.clear()
+        list_tag = None
+
+    def flush_code():
+        nonlocal code_lines
+        if code_lines is not None:
+            body = "&#10;".join(_html.escape(line, quote=False) for line in code_lines)
+            blocks.append(("pre", f"<pre><code>{body}</code></pre>"))
+        code_lines = None
+
+    for line in (text or "").splitlines():
+        stripped = line.strip()
+
+        if stripped.startswith("```"):
+            if code_lines is None:
+                flush_paragraph()
+                flush_list()
+                code_lines = []
             else:
-                st.markdown(f'<div class="rail-muted">{label}</div>', unsafe_allow_html=True)
+                flush_code()
+            continue
+        if code_lines is not None:
+            code_lines.append(line)
+            continue
 
-    st.markdown('<hr class="nav-rail-divider">', unsafe_allow_html=True)
+        if not stripped:
+            flush_paragraph()
+            flush_list()
+            continue
 
+        heading = _re.match(r"#{1,6}\s+(.*)", stripped)
+        bullet = _re.match(r"[-*+]\s+(.*)", stripped)
+        numbered = _re.match(r"\d+[.)]\s+(.*)", stripped)
 
-# ---------------------------------------------------------------------------
-# Scan helpers
-# ---------------------------------------------------------------------------
-def _is_github_url(url: str) -> bool:
-    u = url.strip().lower()
-    return u.startswith("https://github.com/") or u.startswith("http://github.com/")
-
-
-def _run_mock_scan(uploaded_file, github_url: str) -> None:
-    try:
-        from fixtures import _FIXTURE_DEFAULT, _FIXTURE_CLEAN
-    except ImportError:
-        from app.fixtures import _FIXTURE_DEFAULT, _FIXTURE_CLEAN
-
-    if uploaded_file is None and github_url.strip() == "":
-        st.session_state["scan_status"] = "error"
-        st.session_state["scan_error_message"] = "Add a .zip file or a GitHub URL to scan."
-        return
-
-    if uploaded_file is None and not _is_github_url(github_url):
-        st.session_state["scan_status"] = "error"
-        st.session_state["scan_error_message"] = "That doesn't look like a valid GitHub URL."
-        return
-
-    with st.spinner("ANALYZING\u2026"):
-        time.sleep(1.2)
-
-    if uploaded_file is not None:
-        fixture = _FIXTURE_DEFAULT
-    else:
-        url_lower = github_url.strip().lower()
-        if "error" in url_lower:
-            st.session_state["scan_status"] = "error"
-            st.session_state["scan_error_message"] = (
-                "Couldn't access this repository. Check the URL and try again."
-            )
-            return
-        elif "empty" in url_lower:
-            st.session_state["scan_status"] = "error"
-            st.session_state["scan_error_message"] = (
-                "No Python files found in this source. Try a different folder or repository."
-            )
-            return
-        elif "clean" in url_lower:
-            fixture = _FIXTURE_CLEAN
+        if heading:
+            flush_paragraph()
+            flush_list()
+            blocks.append(("h", f"<p><b>{_inline_markdown(heading.group(1))}</b></p>"))
+        elif bullet or numbered:
+            flush_paragraph()
+            wanted = "ul" if bullet else "ol"
+            if list_tag and list_tag != wanted:
+                flush_list()
+            list_tag = wanted
+            items.append((bullet or numbered).group(1))
         else:
-            fixture = _FIXTURE_DEFAULT
+            flush_list()
+            paragraph.append(stripped)
 
-    file_count = len(fixture)
-    missing_count = sum(row["missing"] for row in fixture)
-    st.session_state["scan_status"] = "populated"
-    st.session_state["scan_error_message"] = None
-    st.session_state["scan_results"] = fixture
-    st.session_state["scan_summary"] = {
-        "file_count": file_count,
-        "missing_count": missing_count,
-    }
+    flush_code()
+    flush_paragraph()
+    flush_list()
 
-
-# ---------------------------------------------------------------------------
-# Generation log builder
-# ---------------------------------------------------------------------------
-def _build_generation_log(scan_results: list, rate_limited: bool) -> tuple:
-    AMBER = "#FFD700"
-    RED   = "#E5484D"
-    MUTED = "#9CA3AF"
-
-    lines = []
-    for row in scan_results:
-        path    = row["path"]
-        missing = row["missing"]
-        if missing > 0:
-            plural = "s" if missing != 1 else ""
-            text   = f"{path} \u2014 drafting {missing} docstring{plural}... done"
-            color  = AMBER
-        else:
-            text  = f"{path} \u2014 already documented, skipping"
-            color = MUTED
-        lines.append((text, color))
-
-    if rate_limited:
-        lines.append(("synthesizing module overview... rate limit reached", RED))
-    else:
-        lines.append(("synthesizing module overview... done", AMBER))
-        lines.append(("indexing for Q&A... done", AMBER))
-
-    total_chars = sum(len(t) for t, _ in lines)
-    total_ms    = total_chars * _MS_PER_CHAR + len(lines) * _PAUSE_PER_LINE
-    duration_s  = total_ms / 1000.0
-
-    return lines, duration_s
-
-
-def _build_log_component(lines: list, height: int = 340) -> str:
-    js_lines = "[\n"
-    for text, color in lines:
-        safe_text  = text.replace("\\", "\\\\").replace("'", "\\'")
-        safe_color = color if color else "#A59C8A"
-        js_lines  += f"    {{text: '{safe_text}', color: '{safe_color}'}},\n"
-    js_lines += "  ]"
-
-    return f"""<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<style>
-  * {{ margin:0; padding:0; box-sizing:border-box; }}
-  body {{
-    background: transparent;
-    font-family: 'IBM Plex Mono', 'Courier New', monospace;
-    font-feature-settings: 'liga' 0, 'calt' 0;
-    font-variant-ligatures: none;
-  }}
-  #log {{
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    width: 100%;
-  }}
-  .log-line {{
-    font-size: 0.8rem;
-    font-weight: 400;
-    line-height: 1.5;
-    opacity: 0;
-    transition: opacity 0.1s ease;
-    white-space: pre-wrap;
-    word-break: break-all;
-  }}
-  .log-line.visible {{ opacity: 1; }}
-  .cursor {{
-    display: inline-block;
-    width: 7px;
-    height: 1em;
-    background: #E8B339;
-    vertical-align: text-bottom;
-    animation: blink 0.8s step-end infinite;
-    margin-left: 1px;
-  }}
-  @keyframes blink {{
-    0%, 100% {{ opacity: 1; }}
-    50%       {{ opacity: 0; }}
-  }}
-</style>
-</head>
-<body>
-<div id="log"></div>
-<script>
-(function() {{
-  var MS_PER_CHAR  = {_MS_PER_CHAR};
-  var PAUSE_PER_LINE = {_PAUSE_PER_LINE};
-  var lines = {js_lines};
-  var logEl = document.getElementById('log');
-  var lineIndex = 0;
-  var charIndex = 0;
-  var currentEl = null;
-  var cursorEl  = null;
-
-  function nextLine() {{
-    if (lineIndex >= lines.length) return;
-    var item = lines[lineIndex];
-    currentEl = document.createElement('div');
-    currentEl.className = 'log-line visible';
-    currentEl.style.color = item.color;
-    cursorEl = document.createElement('span');
-    cursorEl.className = 'cursor';
-    currentEl.appendChild(cursorEl);
-    logEl.appendChild(currentEl);
-    charIndex = 0;
-    typeChar();
-  }}
-
-  function typeChar() {{
-    var item = lines[lineIndex];
-    if (charIndex < item.text.length) {{
-      var node = document.createTextNode(item.text[charIndex]);
-      currentEl.insertBefore(node, cursorEl);
-      charIndex++;
-      setTimeout(typeChar, MS_PER_CHAR);
-    }} else {{
-      if (cursorEl && cursorEl.parentNode) cursorEl.parentNode.removeChild(cursorEl);
-      lineIndex++;
-      if (lineIndex < lines.length) setTimeout(nextLine, PAUSE_PER_LINE);
-    }}
-  }}
-
-  nextLine();
-}})();
-</script>
-</body>
-</html>"""
+    if len(blocks) == 1 and blocks[0][0] == "p":
+        return blocks[0][1]  # a plain one-paragraph answer needs no wrapper
+    return "".join(f"<p>{body}</p>" if kind == "p" else body for kind, body in blocks)
 
 
 # ---------------------------------------------------------------------------
 # Docs Markdown Builder (Defensive Key Parsing)
 # ---------------------------------------------------------------------------
-def _build_docs_markdown(pipeline_results: dict = None, scan_summary: dict = None) -> str:
+def _build_docs_markdown(pipeline_results: dict | None = None, scan_summary: dict | None = None) -> str:
     """Compiles the generated pipeline documentation payload into formatted Markdown."""
     lines = []
-    
+
     current_utc = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
     lines.append("# CodeDocAI Generated Documentation")
     lines.append(f"*Generated on: {current_utc} UTC*\n")
     lines.append("---\n")
-    
+
     if not pipeline_results:
         pipeline_results = st.session_state.get("pipeline_results") or {}
-        
+
     overview = pipeline_results.get("overview", "No architecture overview generated.")
     lines.append(overview)
     lines.append("\n---\n")
     lines.append("## Module Documentation\n")
-    
+
     functions = pipeline_results.get("functions", [])
     files_dict = {}
     for fn in functions:
         # Fallback hierarchy to prevent "unknown_file.py"
         file_name = fn.get("file") or fn.get("file_path") or fn.get("path") or "unknown_file.py"
         files_dict.setdefault(file_name, []).append(fn)
-        
+
     for file_name, funcs in files_dict.items():
         lines.append(f"### File: `{file_name}`")
         for fn in funcs:
             fn_name = fn.get("name", fn.get("function", "unknown_function"))
-            docstring = fn.get("docstring", "No docstring available.")
+            docstring = fn.get("docstring") or "No docstring available."
             source = fn.get("source", fn.get("code", ""))
-            
-            lines.append(f"#### `def {fn_name}()`")
-            lines.append("**Description & Parameters:**")
+
+            if fn.get("kind") == "class":
+                lines.append(f"#### `class {fn_name}`")
+            else:
+                lines.append(f"#### `def {fn_name}()`")
+            lines.append("**Docstring:**")
             lines.append(f"```python\n{docstring}\n```")
             lines.append("**Source Code:**")
-            lines.append("<details><summary>Click to expand</summary>\n")
+            lines.append("<details><summary>Show source</summary>\n")
             lines.append(f"```python\n{source}\n```\n")
             lines.append("</details>\n")
         lines.append("---\n")
-        
+
     return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
-# Audit Logger (SOC-2 Compliance)
+# Audit log (demo)
 # ---------------------------------------------------------------------------
-def log_audit(action: str, details: str, user: str, severity: str = "INFO"):
-    """Writes a timestamped SOC-2 compliance log to the enterprise audit ledger."""
+MAX_AUDIT_ENTRIES = 5000  # oldest entries are dropped past this, so the file can't grow forever
+
+
+def read_audit_log() -> list[dict]:
+    """Every entry in the audit ledger, oldest first. Empty if the file is missing or unreadable."""
+    return read_json(_AUDIT_FILE, [])
+
+
+def purge_audit_log(user: str | None = None) -> int:
+    """Deletes every entry, or every entry of one user. Returns how many were deleted."""
+    deleted = 0
+
+    def purge(logs: list[dict]) -> list[dict]:
+        nonlocal deleted
+        kept = [] if user is None else [log for log in logs if log.get("user") != user]
+        deleted = len(logs) - len(kept)
+        return kept
+
+    update_json(_AUDIT_FILE, purge, [])
+    return deleted
+
+
+def log_audit(action: str, details: str, user: str, severity: str = "INFO") -> None:
+    """Adds a UTC-timestamped entry to the demo audit log."""
     entry = {
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         "user": user,
         "action": action,
         "severity": severity,
-        "details": details
+        "details": details,
     }
-    
-    logs = []
-    if os.path.exists(_AUDIT_FILE):
-        try:
-            with open(_AUDIT_FILE, "r", encoding="utf-8") as f:
-                logs = json.load(f)
-        except Exception:
-            pass
-            
-    logs.append(entry)
-    
-    try:
-        with open(_AUDIT_FILE, "w", encoding="utf-8") as f:
-            json.dump(logs, f, indent=2)
-    except Exception:
-        pass
+    update_json(_AUDIT_FILE, lambda logs: [*logs, entry][-MAX_AUDIT_ENTRIES:], [])
+
+
+def audit_event(action: str, details: str, severity: str = "INFO") -> None:
+    """
+    Records an action of the signed-in developer in the audit ledger.
+    Does nothing for anonymous use or for the manager, who is the auditor.
+    """
+    if st.session_state.get("authenticated") and st.session_state.get("role") == "developer":
+        log_audit(action, details, st.session_state.get("username"), severity=severity)

@@ -1,68 +1,107 @@
-import streamlit as st
+import contextlib
+
 import pandas as pd
-import json
-import os
+import streamlit as st
 
-_AUDIT_FILE = "enterprise_audit.json"
+from helpers import log_audit, page_heading, purge_audit_log, queue_toast, read_audit_log, render_stats
 
-def render():
-    st.markdown('<div class="header-container"><h1 class="header-title">Corporate <span>Audit & Compliance Ledger</span></h1></div>', unsafe_allow_html=True)
-    
-    # Clearance check
+
+def _close_purge() -> None:
+    st.session_state["_confirm_purge"] = None
+
+
+@st.dialog("Delete audit entries?", on_dismiss=_close_purge)
+def _purge_dialog(selected_user: str, doomed: int) -> None:
+    scope = "the whole log" if selected_user == "All Users" else f"every entry of '{selected_user}'"
+    st.markdown(
+        f'<p class="dialog-body">This permanently deletes {doomed} entries ({scope}). '
+        "It can’t be undone; download the CSV first if anyone might need the records.</p>",
+        unsafe_allow_html=True,
+    )
+    with st.container(horizontal=True, horizontal_alignment="right", gap="small", key="purge_actions"):
+        if st.button("Cancel", key="purge_cancel", type="secondary"):
+            _close_purge()
+            st.rerun()
+        # The danger_* key gives this button the danger colour instead of the brand accent.
+        if st.button(f"Delete {doomed} entries", key="danger_purge_confirm", type="primary"):
+            deleted = purge_audit_log(None if selected_user == "All Users" else selected_user)
+            _close_purge()
+            # A purge is itself an auditable action: it leaves a record of who deleted what.
+            log_audit(
+                action="LEDGER_PURGE",
+                details=f"Deleted {deleted} audit entries ({scope}).",
+                user=st.session_state.get("username") or "manager",
+                severity="WARNING",
+            )
+            queue_toast(f"Deleted {deleted} audit entries", ":material/delete:")
+            st.rerun()
+
+
+def _close_row() -> None:
+    st.session_state["_audit_table_version"] = st.session_state.get("_audit_table_version", 0) + 1
+
+
+@st.dialog("Audit entry", width="medium", on_dismiss=_close_row)
+def _row_dialog(row: dict) -> None:
+    render_stats([("Severity", row.get("severity", "")), ("Action", row.get("action", "")), ("User", row.get("user", ""))])
+    st.caption(f"{row.get('timestamp', '')} UTC")
+    st.text(str(row.get("details", "")))
+    if st.button("Close", key="audit_row_close", type="secondary"):
+        _close_row()
+        st.rerun()
+
+
+def render() -> None:
+    page_heading("Audit log")
+
+    # Role check
     if st.session_state.get("role") != "manager":
-        st.error("🚨 403 FORBIDDEN: You do not possess Managerial Clearance to inspect corporate audit telemetry.")
-        if st.button("Return to Developer View"):
+        st.error("Only the manager account can open the audit log.")
+        if st.button("Back to the app", key="dashboard_denied_back", type="primary"):
             st.session_state["current_screen"] = "landing"
             st.rerun()
         st.stop()
 
-    st.markdown("### 🛡️ Real-Time Governance & Team Oversight")
-    st.markdown("Continuous audit trail of repository scans, local CodeT5 batch inferences, and AI prompt surveillance.")
+    if st.button("Back to the app", key="dashboard_back", type="tertiary", icon=":material/arrow_back:"):
+        st.session_state["current_screen"] = "landing"
+        st.rerun()
 
-    logs = []
-    if os.path.exists(_AUDIT_FILE):
-        try:
-            with open(_AUDIT_FILE, "r", encoding="utf-8") as f:
-                logs = json.load(f)
-        except Exception:
-            pass
-
+    logs = read_audit_log()
     if not logs:
-        st.info("The audit ledger is currently pristine. No events logged.")
+        st.info("No events yet.")
         return
 
     df = pd.DataFrame(logs)
-    
+
     # Ensure expected columns exist
     for col in ["timestamp", "user", "action", "severity", "details"]:
         if col not in df.columns:
             df[col] = "N/A"
 
-    # --- TOP LEVEL TELEMETRY METRICS ---
+    # --- TOTALS ---
     total_events = len(df)
     critical_events = len(df[df["severity"] == "CRITICAL"])
     qa_queries = len(df[df["action"] == "Q&A_QUERY"])
     active_users = df["user"].nunique()
 
-    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-    kpi1.metric("Total Logged Events", total_events)
-    kpi2.metric("Active Employees", active_users)
-    kpi3.metric("RAG Prompts Inspected", qa_queries)
-    kpi4.metric("Security Incidents", critical_events, delta=f"{critical_events} flagged" if critical_events else "0", delta_color="inverse")
+    render_stats([
+        ("Events", total_events),
+        ("Users", active_users),
+        ("Questions asked", qa_queries),
+        ("Critical", critical_events),
+    ], key="audit_stats")
 
-    st.markdown("---")
-
-    # --- FILTER INTERFACE ---
+    # --- FILTERS ---
     col_user, col_act, col_sev = st.columns(3)
     with col_user:
-        users_list = ["All Users"] + sorted(list(df["user"].unique()))
-        selected_user = st.selectbox("Filter by Employee:", users_list)
+        users_list = ["All Users", *sorted(df["user"].unique())]
+        selected_user = st.selectbox("User", users_list)
     with col_act:
-        actions_list = ["All Actions"] + sorted(list(df["action"].unique()))
-        selected_action = st.selectbox("Filter by Action:", actions_list)
+        actions_list = ["All Actions", *sorted(df["action"].unique())]
+        selected_action = st.selectbox("Action", actions_list)
     with col_sev:
         severities = ["All Severities", "CRITICAL", "WARNING", "INFO"]
-        selected_sev = st.selectbox("Filter by Security Level:", severities)
+        selected_sev = st.selectbox("Severity", severities)
 
     # Apply Filters for Dataframe Display
     filtered_df = df.copy()
@@ -74,47 +113,50 @@ def render():
         filtered_df = filtered_df[filtered_df["severity"] == selected_sev]
 
     filtered_df = filtered_df.sort_values(by="timestamp", ascending=False)
-    
-    st.dataframe(
+
+    selection = st.dataframe(
         filtered_df[["timestamp", "user", "action", "severity", "details"]],
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
+        on_select="rerun",
+        selection_mode="single-row",
+        key=f"audit_table_{st.session_state.get('_audit_table_version', 0)}",
         column_config={
-            "timestamp": st.column_config.TextColumn("UTC Timestamp", width="small"),
-            "user": st.column_config.TextColumn("Engineer", width="small"),
-            "action": st.column_config.TextColumn("Operation", width="small"),
+            "timestamp": st.column_config.TextColumn("Time (UTC)", width="medium"),
+            "user": st.column_config.TextColumn("User", width="small"),
+            "action": st.column_config.TextColumn("Action", width="small"),
             "severity": st.column_config.TextColumn("Severity", width="small"),
-            "details": st.column_config.TextColumn("Logged Telemetry / Query Content", width="large"),
+            "details": st.column_config.TextColumn("Details", width="large"),
         }
     )
 
-    # --- COMPLIANCE EXPORT & DATA PURGE ---
-    st.markdown("---")
-    col_dl, col_purge = st.columns([2, 1.5])
-    
-    with col_dl:
+    # The table cuts long details short, so a selected row opens in full in a dialog.
+    selected_rows = []
+    with contextlib.suppress(AttributeError, TypeError):
+        selected_rows = list(selection.selection.rows)
+    # Streamlit allows one open dialog per run, and the delete confirmation takes precedence.
+    if selected_rows and selected_rows[0] < len(filtered_df) and not st.session_state.get("_confirm_purge"):
+        _row_dialog(filtered_df.iloc[selected_rows[0]].to_dict())
+    else:
+        st.caption("Select a row to read it in full.")
+
+    # --- DOWNLOAD & DELETE ---
+    with st.container(horizontal=True, gap="small", key="audit_actions"):
         csv_data = filtered_df.to_csv(index=False).encode("utf-8")
         st.download_button(
-            label="⬇️ EXPORT AUDIT LOG (CSV)",
+            label="Download CSV",
             data=csv_data,
-            file_name="soc2_type2_telemetry_report.csv",
+            file_name="codedocai_audit_log.csv",
             mime="text/csv",
             type="secondary",
-            use_container_width=True
+            icon=":material/download:",
         )
-        
-    with col_purge:
-        purge_label = "🗑️ WIPE ENTIRE LEDGER" if selected_user == "All Users" else f"🗑️ PURGE '{selected_user.upper()}'"
-        
-        if st.button(purge_label, type="primary", use_container_width=True):
-            if selected_user == "All Users":
-                new_logs = []
-            else:
-                new_logs = [log for log in logs if log.get("user") != selected_user]
-            
-            try:
-                with open(_AUDIT_FILE, "w", encoding="utf-8") as f:
-                    json.dump(new_logs, f, indent=2)
-            except Exception:
-                pass
-            st.rerun()
+        purge_label = "Delete all entries" if selected_user == "All Users" else f"Delete entries of '{selected_user}'"
+
+        doomed = len(logs) if selected_user == "All Users" else sum(1 for log in logs if log.get("user") == selected_user)
+        if st.button(purge_label, type="secondary", disabled=doomed == 0, key="purge_open",
+                     icon=":material/delete:"):
+            st.session_state["_confirm_purge"] = selected_user
+        if st.session_state.get("_confirm_purge") == selected_user and doomed:
+            _purge_dialog(selected_user, doomed)
+

@@ -1,13 +1,45 @@
 [theme]
 base = "dark"
-backgroundColor = "#151515"
-secondaryBackgroundColor = "#14120F"
+# These mirror the semantic tokens in app/styles.py (--bg, --surface, --text-*, --border,
+# --accent-amber, --radius-*). Streamlit's own widgets read these; keep the two in step.
+backgroundColor = "#000000"
+secondaryBackgroundColor = "#0A0A0A"
+primaryColor = "#E8B339"
 textColor = "#F0EAD9"
-font = "monospace"
+linkColor = "#E8B339"
+borderColor = "#222222"
+showWidgetBorder = true
+codeBackgroundColor = "#121212"
+redColor = "#E5484D"
+greenColor = "#4CAF50"
+orangeColor = "#E8B339"
+
+# Fonts load from Google Fonts here instead of an @import in the stylesheet.
+font = "'IBM Plex Mono':https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+headingFont = "Fraunces:https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&display=swap"
+codeFont = "'IBM Plex Mono':https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap"
+codeFontSize = "0.8125rem"
+headingFontWeights = [700, 600, 600, 600, 500, 500]
+
+baseRadius = "8px"
+buttonRadius = "8px"
+
+dataframeHeaderBackgroundColor = "#0A0A0A"
+dataframeHeaderTextColor = "#A59C8A"
+dataframeBorderColor = "#222222"
+
+[client]
+# The app has its own header; Streamlit's toolbar keeps only what a viewer needs.
+toolbarMode = "minimal"
+showSidebarNavigation = false
 
 [browser]
 gatherUsageStats = false
 
 [server]
 headless = true
+# Reachable from this machine only. To demo over a network or deploy, start the app with
+# the environment variable STREAMLIT_SERVER_ADDRESS=0.0.0.0 (it overrides this line).
+address = "localhost"
+maxUploadSize = 100
 enableXsrfProtection = true

@@ -14,13 +14,15 @@ def render_foundation() -> None:
     )
     st.markdown('<div class="section-header">Colors</div>', unsafe_allow_html=True)
     COLOR_TOKENS = [
-        ("--bg",           "#151515"),
-        ("--surface",      "#14120F"),
+        ("--bg",           "#000000"),
+        ("--surface",      "#0A0A0A"),
         ("--text-primary", "#F0EAD9"),
         ("--text-muted",   "#A59C8A"),
-        ("--border",       "#332E28"),
+        ("--border",       "#222222"),
+        ("--border-strong", "#5E5E5E"),
         ("--accent-amber", "#E8B339"),
         ("--accent-red",   "#E5484D"),
+        ("--color-success", "#4CAF50"),
     ]
     swatches_html = '<div class="token-grid">'
     for token, hex_val in COLOR_TOKENS:

@@ -106,7 +106,18 @@ my_docstring_project/
 docs_cache.json
 api_cooldowns.json
 
-# Diagnostic scripts
-test_*.py
-
 enterprise_audit.json
+
+# --- Local Development Only (not part of the published project) ---
+# AI assistant settings, skills and preview launch configs
+.claude/
+# Offline test suite, its configuration, and one-off diagnostic scripts
+tests/
+test_*.py
+conftest.py
+pytest.ini
+pyproject.toml
+# Editor/agent design-system output
+design-system/
+# taste-skill (design-taste-frontend) build/checker output
+.taste-skill/

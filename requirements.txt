@@ -1,11 +1,29 @@
-streamlit>=1.35.0
-GitPython>=3.1.0
-sentence-transformers>=3.0.0
-chromadb>=1.5.0
+# Versions are bounded to the major releases the app is tested with.
+# Upper bounds stop a new major release (CrewAI's API in particular changes often)
+# from breaking a fresh install.
+
+# App
+streamlit>=1.66.1,<2
+pandas>=2.0,<3
+python-dotenv>=1.0,<2
+
+# Repository loading
+GitPython>=3.1.40,<4
+
+# Local model
+torch>=2.0,<3
+transformers>=4.40,<6
+
+# Vector search
+sentence-transformers>=3.0.0,<7
+chromadb>=1.5.0,<2
+
+# Cloud agents (CrewAI brings litellm, which talks to Gemini and Groq)
+crewai>=0.193,<0.194
+
+# Compatibility pins for libraries the packages above pull in; they keep pip from
+# choosing versions that conflict with each other.
 protobuf<6
 googleapis-common-protos<1.64.0
-crewai
-langchain-google-genai
-python-dotenv
 pillow<12
 rich<14

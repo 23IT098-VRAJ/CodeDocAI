@@ -9,48 +9,192 @@ import streamlit as st
 
 def inject_css() -> None:
     """
-    Inject the application's entire CSS block via st.markdown.
-    Must be called before any other st.* render call.
+    Inject the application's entire CSS block.
+
+    st.html sends HTML that holds only a <style> tag to Streamlit's event container,
+    outside the page: it takes no space, and the CSS text no longer becomes part of
+    the main landmark's accessible name (st.markdown rendered it inside <main>).
+    Never write an HTML tag inside the CSS, even in a comment: the sanitizer then
+    drops the whole style block.
     """
-    st.markdown(
+    st.html(
         """
     <style>
-    /* -- Google Fonts (single import -- never duplicate) -- */
-    @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400&family=IBM+Plex+Mono:wght@400;500&display=swap');
+    /* Fonts load through the theme in .streamlit/config.toml. */
 
-    /* -- Design tokens -- */
+    /* ================================================================
+       DESIGN TOKENS -- three layers.
+       1. Primitives hold the raw values and carry no meaning.
+       2. Semantic tokens say what a value is for; change these to re-theme.
+       3. Component tokens let one component be tuned without touching the rest.
+       Rules below read layers 2 and 3. A raw colour, size or duration in a
+       rule is a bug, apart from the optical nudges marked as such.
+       ================================================================ */
+
+    /* === 1. PRIMITIVES === */
     :root {
-        --bg:             #000000;
-        --surface:        #0A0A0A;
-        --text-primary:   #F0EAD9;
-        --text-muted:     #A59C8A;
-        --border:         #222222;
-        --accent-amber:   #E8B339;
-        --accent-red:     #E5484D;
+        /* colour */
+        --color-black:      #000000;
+        --color-ink-950:    #050505;
+        --color-ink-900:    #0A0A0A;
+        --color-ink-850:    #111111;
+        --color-ink-800:    #121212;
+        --color-ink-750:    #151515;
+        --color-ink-700:    #222222;
+        --color-ink-500:    #5E5E5E;
+        --color-grey-400:   #A0A0A0;
+        --color-sand-400:   #A59C8A;
+        --color-sand-100:   #F0EAD9;
+        --color-white:      #FFFFFF;
+        --color-amber-400:  #F0C35A;
+        --color-amber-500:  #E8B339;
+        --color-red-500:    #E5484D;
+        --color-green-500:  #4CAF50;
+        /* the same hues as channels, for translucent washes */
+        --rgb-white:  255, 255, 255;
+        --rgb-black:  0, 0, 0;
+        --rgb-amber:  232, 179, 57;
+        --rgb-green:  76, 175, 80;
 
+        /* type families */
+        --font-mono:   'IBM Plex Mono', monospace;
+        --font-serif:  'Fraunces', Georgia, serif;
+
+        /* spacing: 4px base; the "h" steps are half steps */
+        --space-0h: 2px;
         --space-1:  4px;
+        --space-1h: 6px;
         --space-2:  8px;
+        --space-2h: 12px;
         --space-3:  16px;
         --space-4:  24px;
         --space-5:  32px;
         --space-6:  48px;
 
-        --radius-pill:  999px;
+        /* radius */
+        --radius-xs:    2px;
+        --radius-sm:    4px;
+        --radius-base:  8px;
         --radius-md:    12px;
         --radius-lg:    16px;
+        --radius-pill:  999px;
+
+        /* type scale: 12 / 14 / 16 / 18 / 20 / 24 / 32 / 40. Nothing below 12px. */
+        --text-xs:    0.75rem;
+        --text-sm:    0.875rem;
+        --text-base:  1rem;
+        --text-md:    1.125rem;
+        --text-lg:    1.25rem;
+        --text-xl:    1.5rem;
+        --text-2xl:   2rem;
+        --text-3xl:   2.5rem;
+
+        /* line height */
+        --leading-none:     1;
+        --leading-tight:    1.1;
+        --leading-snug:     1.35;
+        --leading-normal:   1.5;
+        --leading-relaxed:  1.65;
+
+        /* letter spacing, in em so it scales with the text */
+        --tracking-tighter: -0.03em;
+        --tracking-tight:   -0.02em;
+        --tracking-snug:    -0.01em;
+        --tracking-wide:    0.05em;
+        --tracking-wider:   0.08em;
+        --tracking-widest:  0.1em;
+        --tracking-caps:    0.12em;
+
+        /* motion */
+        --duration-fast:    0.15s;
+        --duration-normal:  0.2s;
+
+        --opacity-disabled: 0.45;
+    }
+
+    /* === 2. SEMANTIC === */
+    :root {
+        /* surfaces */
+        --bg:              var(--color-black);
+        --surface:         var(--color-ink-900);
+        --surface-sunken:  var(--color-ink-950);
+        --surface-raised:  var(--color-ink-850);
+        --surface-code:    var(--color-ink-800);
+
+        /* text */
+        --text-primary:      var(--color-sand-100);
+        --text-muted:        var(--color-sand-400);
+        --text-strong:       var(--color-white);
+        --text-placeholder:  var(--color-grey-400);
+        --text-on-accent:    var(--color-ink-750);
+
+        /* lines. --border is a decorative hairline; --border-strong marks the edge
+           of a control and meets the 3:1 contrast WCAG asks of interface parts. */
+        --border:         var(--color-ink-700);
+        --border-strong:  var(--color-ink-500);
+        --border-subtle:  rgba(var(--rgb-white), 0.1);
+        --border-faint:   rgba(var(--rgb-white), 0.05);
+
+        /* brand and status */
+        --accent-amber:   var(--color-amber-500);
+        --accent-red:     var(--color-red-500);
+        --color-success:  var(--color-green-500);
+        --color-warning:  var(--accent-amber);
+        --color-danger:   var(--accent-red);
+
+        /* translucent washes over the background */
+        --accent-wash-1:  rgba(var(--rgb-amber), 0.05);
+        --surface-frosted: rgba(var(--rgb-black), 0.72);
+        --accent-wash-2:  rgba(var(--rgb-amber), 0.06);
+        --accent-wash-3:  rgba(var(--rgb-amber), 0.08);
+        --accent-wash-4:  rgba(var(--rgb-amber), 0.15);
+        --accent-line:    rgba(var(--rgb-amber), 0.2);
+        --success-wash:   rgba(var(--rgb-green), 0.05);
+        --success-line:   rgba(var(--rgb-green), 0.2);
+        --neutral-wash-1: rgba(var(--rgb-white), 0.03);
+        --neutral-wash-2: rgba(var(--rgb-white), 0.08);
+
+        /* focus */
+        --focus-ring-color:   var(--accent-amber);
+        --focus-ring-width:   2px;
+        --focus-ring-offset:  2px;
+    }
+
+    /* === 3. COMPONENT === */
+    :root {
+        --button-bg:             var(--accent-amber);
+        --button-fg:             var(--text-on-accent);
+        --button-radius:         var(--radius-md);
+        --button-font-size:      var(--text-xs);
+        --button-hover-opacity:  0.88;
+        --button-danger-bg:      var(--color-danger);
+        --button-danger-fg:      var(--text-on-accent);
+
+        --input-bg:            var(--surface);
+        --input-fg:            var(--text-primary);
+        --input-placeholder:   var(--text-placeholder);
+        --input-border:        var(--border-strong);
+        --input-border-focus:  var(--accent-amber);
+        --input-radius:        var(--radius-md);
+
+        --card-bg:      var(--surface);
+        --card-border:  var(--border);
+        --card-radius:  var(--radius-md);
     }
 
     /* -- Global resets -- */
     html, body, [class*="css"], .stApp, .block-container {
         background-color: var(--bg) !important;
         color:            var(--text-primary) !important;
-        font-family:      'IBM Plex Mono', monospace !important;
+        font-family:      var(--font-mono) !important;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
     }
 
     /* -- Heading elements use Fraunces -- */
     h1, h2, h3, h4, h5, h6,
     .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
-        font-family: 'Fraunces', serif !important;
+        font-family: var(--font-serif) !important;
         color:       var(--text-primary) !important;
     }
 
@@ -96,14 +240,19 @@ def inject_css() -> None:
     }
 
     /* -- Hide Streamlit chrome safely -- */
-    #MainMenu, footer, header {
+    #MainMenu, footer {
         visibility: hidden !important;
         height: 0 !important;
         min-height: 0 !important;
         padding: 0 !important;
         margin: 0 !important;
     }
-
+    /* The header is hidden but keeps its box, and lets clicks through to the page. */
+    header {
+        visibility: hidden !important;
+        background: transparent !important;
+        pointer-events: none !important;
+    }
     /* ================================================================
        SESSION 0 -- Foundation verification page
        ================================================================ */
@@ -128,23 +277,23 @@ def inject_css() -> None:
         border: 1px solid var(--border);
     }
     .swatch-name {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 11px;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
         font-weight: 500;
         color: var(--text-muted);
-        line-height: 1.4;
+        line-height: var(--leading-snug);
     }
     .type-specimen {
         padding: var(--space-3) 0;
         border-bottom: 1px solid var(--border);
     }
     .type-label {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 10px;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
         font-weight: 400;
         color: var(--text-muted);
         text-transform: uppercase;
-        letter-spacing: 0.1em;
+        letter-spacing: var(--tracking-widest);
         margin-bottom: var(--space-1);
     }
     .spacing-grid {
@@ -163,11 +312,11 @@ def inject_css() -> None:
     .spacing-bar {
         background: var(--accent-amber);
         width: 28px;
-        border-radius: 2px;
+        border-radius: var(--radius-xs);
     }
     .spacing-label {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 11px;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
         font-weight: 400;
         color: var(--text-muted);
     }
@@ -189,14 +338,14 @@ def inject_css() -> None:
         gap: var(--space-1);
     }
     .radius-box .r-label {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 11px;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
         font-weight: 500;
         color: var(--text-muted);
     }
     .section-header {
-        font-family: 'Fraunces', serif !important;
-        font-size: 1.25rem;
+        font-family: var(--font-serif) !important;
+        font-size: var(--text-lg);
         font-weight: 600;
         color: var(--text-primary);
         margin: var(--space-5) 0 var(--space-2);
@@ -204,23 +353,23 @@ def inject_css() -> None:
         border-bottom: 1px solid var(--border);
     }
     .page-title {
-        font-family: 'Fraunces', serif !important;
-        font-size: 2rem;
+        font-family: var(--font-serif) !important;
+        font-size: var(--text-2xl);
         font-weight: 700;
         color: var(--accent-amber);
         margin-bottom: var(--space-2);
-        letter-spacing: -0.02em;
+        letter-spacing: var(--tracking-tight);
     }
     .page-subtitle {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.8rem;
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
         font-weight: 400;
         color: var(--text-muted);
         margin-bottom: var(--space-5);
     }
     .foundation-footer {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.75rem;
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
         font-weight: 400;
         color: var(--text-muted);
         border-top: 1px solid var(--border);
@@ -229,8 +378,8 @@ def inject_css() -> None:
         text-align: center;
     }
     .no-shadow-note {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.78rem;
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
         color: var(--text-muted);
         margin-top: var(--space-2);
     }
@@ -240,28 +389,28 @@ def inject_css() -> None:
        ================================================================ */
 
     .masthead-wordmark {
-        font-family: 'Fraunces', serif;
+        font-family: var(--font-serif);
         font-weight: 700;
-        font-size: 1.4rem;
+        font-size: var(--text-xl);
         color: var(--text-primary);
-        letter-spacing: -0.02em;
-        line-height: 1;
+        letter-spacing: var(--tracking-tight);
+        line-height: var(--leading-none);
     }
     /* SCAN READY pill -- decorative, not clickable */
     .scan-ready-pill {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 500;
-        font-size: 0.65rem;
-        letter-spacing: 0.12em;
+        font-size: var(--text-xs);
+        letter-spacing: var(--tracking-caps);
         color: var(--accent-amber);
-        background-color: rgba(232, 179, 57, 0.15);
+        background-color: var(--accent-wash-4);
         border: none;
         border-radius: var(--radius-pill);
-        padding: 6px var(--space-3);
+        padding: var(--space-1h) var(--space-3);
         cursor: default;
         user-select: none;
         pointer-events: none;
-        line-height: 1;
+        line-height: var(--leading-none);
         display: inline-block;
     }
 
@@ -275,20 +424,20 @@ def inject_css() -> None:
         padding: 0; /* Stripped to prevent double-stacking */
     }
     .hero-headline {
-        font-family: 'Fraunces', serif;
+        font-family: var(--font-serif);
         font-weight: 700;
-        font-size: 2.4rem;
+        font-size: var(--text-3xl);
         color: var(--text-primary);
-        line-height: 1.1;
-        letter-spacing: -0.03em;
+        line-height: var(--leading-tight);
+        letter-spacing: var(--tracking-tighter);
         margin-bottom: var(--space-4);
     }
     .hero-subhead {
-        font-family: 'Fraunces', serif;
+        font-family: var(--font-serif);
         font-weight: 400;
-        font-size: 1.05rem;
+        font-size: var(--text-md);
         color: var(--text-muted);
-        line-height: 1.65;
+        line-height: var(--leading-relaxed);
         margin-bottom: var(--space-4); /* Reduced from space-6 to pull CTA closer */
     }
 
@@ -296,32 +445,35 @@ def inject_css() -> None:
     .stButton > button,
     .stDownloadButton > button,
     .stFormSubmitButton > button {
-        font-family: 'IBM Plex Mono', monospace !important;
+        font-family: var(--font-mono) !important;
         font-weight: 500 !important;
-        font-size: 0.8rem !important;
-        line-height: 1 !important;
-        letter-spacing: 0.1em !important;
-        color: #151515 !important;
-        background-color: var(--accent-amber) !important;
+        font-size: var(--button-font-size) !important;
+        line-height: var(--leading-none) !important;
+        letter-spacing: var(--tracking-widest) !important;
+        color: var(--button-fg) !important;
+        background-color: var(--button-bg) !important;
         border: none !important;
-        border-radius: var(--radius-md) !important;
-        padding: 11px var(--space-4) 19px var(--space-4) !important;
+        border-radius: var(--button-radius) !important;
+        padding: var(--space-3) var(--space-4) !important; /* even above and below: the label sits on the centre line */
         cursor: pointer !important;
-        transition: opacity 0.15s ease !important;
+        transition: opacity var(--duration-fast) ease !important;
         width: auto !important;
         white-space: nowrap !important;
+        text-transform: uppercase !important; /* one case for every button, whatever case the label is stored in */
         text-align: center !important;
         justify-content: center !important;
         align-items: center !important;
         font-feature-settings: 'liga' 0, 'calt' 0 !important;
         font-variant-ligatures: none !important;
     }
-    .stButton > button:hover,
-    .stDownloadButton > button:hover,
-    .stFormSubmitButton > button:hover {
-        opacity: 0.88 !important;
-        background-color: var(--accent-amber) !important;
-        color: #151515 !important;
+    @media (hover: hover) {
+        .stButton > button:hover,
+        .stDownloadButton > button:hover,
+        .stFormSubmitButton > button:hover {
+            opacity: var(--button-hover-opacity) !important;
+            background-color: var(--button-bg) !important;
+            color: var(--button-fg) !important;
+        }
     }
     .stButton > button:focus,
     .stButton > button:focus-visible,
@@ -332,14 +484,11 @@ def inject_css() -> None:
     .stFormSubmitButton > button:focus,
     .stFormSubmitButton > button:focus-visible,
     .stFormSubmitButton > button:active {
-        outline: none !important;
-        box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent-amber) !important;
+        box-shadow: none !important; /* keyboard focus is drawn by the shared :focus-visible ring */
     }
 
     /* Secondary button styling (outline/ghost) */
-    button[data-testid="baseButton-secondary"],
     button[kind="secondary"],
-    .stButton > button[data-testid="baseButton-secondary"],
     .stButton > button[kind="secondary"],
     div.element-container:has(#cta-secondary-marker-ns) + div .stButton > button,
     div.element-container:has(#cta-secondary-marker) + div .stButton > button {
@@ -347,20 +496,18 @@ def inject_css() -> None:
         color: var(--accent-amber) !important;
         border: 1px solid var(--accent-amber) !important;
     }
-    button[data-testid="baseButton-secondary"]:hover,
-    button[kind="secondary"]:hover,
-    .stButton > button[data-testid="baseButton-secondary"]:hover,
-    .stButton > button[kind="secondary"]:hover,
-    div.element-container:has(#cta-secondary-marker-ns) + div .stButton > button:hover,
-    div.element-container:has(#cta-secondary-marker) + div .stButton > button:hover {
-        background-color: rgba(232, 179, 57, 0.08) !important;
-        color: var(--accent-amber) !important;
-        border-color: var(--accent-amber) !important;
-        opacity: 1 !important;
+    @media (hover: hover) {
+        button[kind="secondary"]:hover,
+        .stButton > button[kind="secondary"]:hover,
+        div.element-container:has(#cta-secondary-marker-ns) + div .stButton > button:hover,
+        div.element-container:has(#cta-secondary-marker) + div .stButton > button:hover {
+            background-color: var(--accent-wash-3) !important;
+            color: var(--accent-amber) !important;
+            border-color: var(--accent-amber) !important;
+            opacity: 1 !important;
+        }
     }
-    button[data-testid="baseButton-secondary"]:active,
     button[kind="secondary"]:active,
-    .stButton > button[data-testid="baseButton-secondary"]:active,
     .stButton > button[kind="secondary"]:active,
     div.element-container:has(#cta-secondary-marker-ns) + div .stButton > button:active,
     div.element-container:has(#cta-secondary-marker) + div .stButton > button:active {
@@ -370,10 +517,10 @@ def inject_css() -> None:
 
     /* Landing footer -- kept in CSS for Session 0 foundation page; unused on landing */
     .landing-footer {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 400;
-        font-size: 0.68rem;
-        letter-spacing: 0.08em;
+        font-size: var(--text-xs);
+        letter-spacing: var(--tracking-wider);
         color: var(--text-muted);
         text-align: center;
         border-top: 1px solid var(--border);
@@ -387,13 +534,13 @@ def inject_css() -> None:
 
     /* Shared section label (mono caps, small, muted) */
     .section-label {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 400;
-        font-size: 0.68rem;
-        letter-spacing: 0.12em;
+        font-size: var(--text-xs);
+        letter-spacing: var(--tracking-caps);
         text-transform: uppercase;
         color: var(--text-muted);
-        margin-top: 8px !important; /* Ensures breathing room below dividers */
+        margin-top: var(--space-2) !important; /* Ensures breathing room below dividers */
         margin-bottom: var(--space-3);
     }
 
@@ -402,11 +549,11 @@ def inject_css() -> None:
         padding: var(--space-4) 0 0 0; /* Stripped bottom padding completely */
     }
     .why-body {
-        font-family: 'Fraunces', serif;
+        font-family: var(--font-serif);
         font-weight: 400;
-        font-size: 1.0625rem;  /* ~17px */
+        font-size: var(--text-md);
         color: var(--text-muted);
-        line-height: 1.65;
+        line-height: var(--leading-relaxed);
         margin: 0;
     }
 
@@ -426,25 +573,21 @@ def inject_css() -> None:
 
     /* -- Cinematic Entrance Animations -- */
     .typewriter-headline {
-        overflow: hidden;
-        white-space: nowrap; /* Forces single line for the effect */
-        border-right: 3px solid var(--accent-amber);
-        max-width: 0;
-        animation: typeMainline 1.2s steps(45, end) 0.2s forwards, blinkCursorMain 0.6s step-end 3 forwards;
+        /* Revealed left to right with a clip, so the text can wrap onto as many
+           lines as the column needs. A width animation on a single unwrapped
+           line cut the sentence off wherever the column ended. */
+        white-space: normal;
+        clip-path: inset(0 100% 0 0);
+        animation: typeMainline 1.2s steps(45, end) 0.2s forwards;
     }
     @keyframes typeMainline {
-        to { max-width: 100%; }
-    }
-    @keyframes blinkCursorMain {
-        0%, 100% { border-right-color: transparent; }
-        50% { border-right-color: var(--accent-amber); }
+        to { clip-path: inset(0 0 0 0); }
     }
     @media (max-width: 768px) {
         /* Mobile fallback so long headlines can wrap naturally */
         .typewriter-headline {
             white-space: normal;
-            border-right: none;
-            max-width: none;
+            clip-path: none;
             animation: fadeSlideUp 0.8s ease-out forwards;
         }
     }
@@ -466,18 +609,18 @@ def inject_css() -> None:
     }
     div.element-container:has(#hero-cta-marker) + div { animation-delay: 1.3s; }
     div.element-container:has(#footer-cta-marker) + div { animation-delay: 2.5s; }
-    .security-item h4 {
-        font-family: 'IBM Plex Mono', monospace !important;
-        font-size: 0.72rem;
+    .security-item h2 {
+        font-family: var(--font-mono) !important;
+        font-size: var(--text-xs);
         color: var(--accent-amber) !important;
         margin-bottom: var(--space-2);
-        letter-spacing: 0.05em;
+        letter-spacing: var(--tracking-wide);
     }
     .security-item p {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.68rem;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
         color: var(--text-muted);
-        line-height: 1.5;
+        line-height: var(--leading-normal);
         margin: 0;
     }
 
@@ -488,11 +631,11 @@ def inject_css() -> None:
         gap: var(--space-5);
         margin-top: var(--space-4);
     }
-    @media (max-width: 650px) { .rationale-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 640px) { .rationale-grid { grid-template-columns: 1fr; } }
     .rationale-col h3 {
-        font-family: 'IBM Plex Mono', monospace !important;
-        font-size: 0.78rem;
-        letter-spacing: 0.1em;
+        font-family: var(--font-mono) !important;
+        font-size: var(--text-sm);
+        letter-spacing: var(--tracking-widest);
         color: var(--text-primary) !important;
         margin-bottom: var(--space-3);
         border-bottom: 1px solid var(--border);
@@ -506,24 +649,24 @@ def inject_css() -> None:
         gap: var(--space-6);
         margin: var(--space-6) 0 var(--space-5) 0;
     }
-    @media (max-width: 650px) { .caps-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 640px) { .caps-grid { grid-template-columns: 1fr; } }
     .caps-item {
         background: transparent;
         padding: var(--space-4) 0 0 0;
         border-top: 1px solid var(--border);
     }
     .caps-item h4 {
-        font-family: 'Fraunces', serif !important;
-        font-size: 1.15rem;
+        font-family: var(--font-serif) !important;
+        font-size: var(--text-lg);
         color: var(--text-primary) !important;
         margin-bottom: var(--space-2);
-        letter-spacing: -0.01em;
+        letter-spacing: var(--tracking-snug);
     }
     .caps-item p {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.75rem;
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
         color: var(--text-muted);
-        line-height: 1.6;
+        line-height: var(--leading-relaxed);
         margin: 0;
     }
 
@@ -535,15 +678,15 @@ def inject_css() -> None:
         border-radius: var(--radius-lg);
         overflow: hidden;
         box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
     }
     .mock-editor-bar {
-        background-color: #050505;
+        background-color: var(--surface-sunken);
         border-bottom: 1px solid var(--border);
-        padding: 10px 14px;
+        padding: var(--space-2h) var(--space-3);
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: var(--space-1h);
     }
     .mock-editor-bar .dot {
         width: 10px; height: 10px;
@@ -554,31 +697,30 @@ def inject_css() -> None:
         margin-left: auto;
         margin-right: auto;
         color: var(--text-muted);
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.72rem;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
     }
     .mock-editor-body {
         padding: var(--space-3) var(--space-4);
     }
     .mock-line {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.78rem;
-        line-height: 1.6;
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
+        line-height: var(--leading-relaxed);
         display: flex;
         white-space: pre;
     }
     .mock-editor-status {
         border-top: 1px solid var(--border);
         padding: var(--space-2) var(--space-4);
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.68rem;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
         color: var(--accent-amber);
     }
     .mock-editor-lineno {
         display: inline-block;
         width: 1.8rem;
         color: var(--text-muted);
-        opacity: 0.5;
         user-select: none;
         flex-shrink: 0;
     }
@@ -593,10 +735,10 @@ def inject_css() -> None:
         50% { border-right-color: var(--accent-amber); }
     }
     @keyframes statusSwap {
-        0%, 70% { content: "> CodeT5 model initialized..."; color: var(--text-muted); }
-        71%, 100% { content: "0.4s · docstring generated."; color: #4CAF50; }
+        0%, 70% { content: "> CodeT5 loaded, drafting"; color: var(--text-muted); }
+        71%, 100% { content: "docstring drafted on this machine"; color: var(--color-success); }
     }
-    
+
     .anim-typewriter {
         display: inline-block;
         overflow: hidden;
@@ -609,27 +751,28 @@ def inject_css() -> None:
         color: var(--text-muted);
     }
     .anim-status::before {
-        content: "> CodeT5 model initialized...";
+        content: "> CodeT5 loaded, drafting";
         /* Extended the total time to 5.5s so the green success state triggers AFTER typing finishes */
         animation: statusSwap 5.5s forwards;
     }
 
     /* -- Timeline Hover Polish -- */
     .timeline-item {
-        transition: background-color 0.2s ease, transform 0.2s ease;
+        transition: background-color var(--duration-normal) ease, transform var(--duration-normal) ease;
         border-radius: var(--radius-md);
         padding: var(--space-4) !important;
-        margin-left: -var(--space-4); /* Offset the padding for alignment */
     }
-    .timeline-item:hover {
-        background-color: #111111; /* Subtle tactile hover */
+    @media (hover: hover) {
+        .timeline-item:hover {
+            background-color: var(--surface-raised); /* Subtle tactile hover */
+        }
     }
 
     /* Sections B+C -- Unified Process + Built-With card */
     .process-card {
-        background-color: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-md);
+        background-color: var(--card-bg);
+        border: 1px solid var(--card-border);
+        border-radius: var(--card-radius);
         padding: var(--space-5);
         margin-top: var(--space-5); /* Dramatically reduced from 72px calc */
     }
@@ -654,7 +797,7 @@ def inject_css() -> None:
         position: relative;
         display: grid;
         grid-template-columns: 120px 1fr;
-        gap: 32px;
+        gap: var(--space-5);
         align-items: center;
         padding: var(--space-4) 0; /* Increased from space-3 to give elements room to breathe */
     }
@@ -673,38 +816,38 @@ def inject_css() -> None:
     .timeline-left {
         display: flex;
         flex-direction: column;
-        gap: 2px;
+        gap: var(--space-0h);
     }
     .timeline-index {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 500;
-        font-size: 0.68rem;
+        font-size: var(--text-xs);
         color: var(--accent-amber);
-        line-height: 1;
+        line-height: var(--leading-none);
     }
     .timeline-step {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 700;
-        font-size: 0.72rem;
-        letter-spacing: 0.1em;
+        font-size: var(--text-xs);
+        letter-spacing: var(--tracking-widest);
         text-transform: uppercase;
         color: var(--text-primary);
-        line-height: 1;
+        line-height: var(--leading-none);
     }
     .timeline-desc {
-        font-family: 'Fraunces', serif;
+        font-family: var(--font-serif);
         font-weight: 400;
-        font-size: 0.9375rem;
+        font-size: var(--text-base);
         color: var(--text-muted);
-        line-height: 1.5;
+        line-height: var(--leading-normal);
         padding-top: 0;
     }
     /* Built-with inside card */
     .card-built-label {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 400;
-        font-size: 0.68rem;
-        letter-spacing: 0.12em;
+        font-size: var(--text-xs);
+        letter-spacing: var(--tracking-caps);
         text-transform: uppercase;
         color: var(--text-muted);
         margin-top: var(--space-4); /* Reduced from space-6 */
@@ -718,19 +861,19 @@ def inject_css() -> None:
         gap: var(--space-2);
     }
     .built-tag {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 400;
-        font-size: 0.72rem;
-        letter-spacing: 0.06em;
-        color: #FFFFFF !important;
+        font-size: var(--text-xs);
+        letter-spacing: var(--tracking-wide);
+        color: var(--text-strong) !important;
         border: 1px solid var(--border);
         border-radius: var(--radius-pill);
-        padding: var(--space-1) 10px !important;
+        padding: var(--space-1) var(--space-2h) !important;
         cursor: default;
         user-select: none;
         pointer-events: none;
         display: inline-block;
-        line-height: 1;
+        line-height: var(--leading-none);
     }
 
     /* Remove Streamlit's injected gap above the footer */
@@ -745,9 +888,9 @@ def inject_css() -> None:
         text-align: center;
     }
     .closing-label {
-        font-family: 'Fraunces', serif !important;
+        font-family: var(--font-serif) !important;
         font-weight: 400;
-        font-size: 1.45rem;
+        font-size: var(--text-xl);
         color: var(--text-primary);
         margin-bottom: 0 !important; /* Strip the margin-bottom completely */
         text-transform: none;
@@ -783,12 +926,14 @@ def inject_css() -> None:
         color: var(--accent-amber) !important;
         border: 1px solid var(--accent-amber) !important;
     }
-    div:has(#cta-secondary-marker) + div .stButton > button:hover,
-    div:has(#cta-secondary-marker-ask) + div .stButton > button:hover,
-    div:has(#cta-secondary-marker-ns) + div .stButton > button:hover {
-        background-color: rgba(232, 179, 57, 0.08) !important;
-        color: var(--accent-amber) !important;
-        opacity: 1 !important;
+    @media (hover: hover) {
+        div:has(#cta-secondary-marker) + div .stButton > button:hover,
+        div:has(#cta-secondary-marker-ask) + div .stButton > button:hover,
+        div:has(#cta-secondary-marker-ns) + div .stButton > button:hover {
+            background-color: var(--accent-wash-3) !important;
+            color: var(--accent-amber) !important;
+            opacity: 1 !important;
+        }
     }
     div:has(#cta-secondary-marker) + div .stButton > button:active,
     div:has(#cta-secondary-marker-ask) + div .stButton > button:active,
@@ -816,36 +961,36 @@ def inject_css() -> None:
 
     /* -- Scan Screen UX Polish -- */
     .scan-parameters {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 400;
-        font-size: 0.68rem;
+        font-size: var(--text-xs);
         color: var(--text-primary);
-        letter-spacing: 0.05em;
+        letter-spacing: var(--tracking-wide);
         margin-top: -12px;
         margin-bottom: var(--space-5);
-        background: rgba(255, 255, 255, 0.03); /* Subtle dark tint */
+        background: var(--neutral-wash-1); /* Subtle dark tint */
         border-left: 2px solid var(--accent-amber);
-        padding: 8px 12px;
-        border-radius: 0 4px 4px 0;
+        padding: var(--space-2) var(--space-2h);
+        border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
     }
-    
+
     div.element-container:has(.scan-microcopy) {
         margin-top: -12px !important;
         margin-bottom: var(--space-4) !important;
     }
     .scan-microcopy {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.68rem;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
         color: var(--text-muted);
-        background: rgba(232, 179, 57, 0.05); /* Amber tint */
-        border: 1px solid rgba(232, 179, 57, 0.2);
-        padding: 8px 12px;
-        border-radius: 4px;
+        background: var(--accent-wash-1); /* Amber tint */
+        border: 1px solid var(--accent-line);
+        padding: var(--space-2) var(--space-2h);
+        border-radius: var(--radius-sm);
         display: flex;
         align-items: flex-start;
-        gap: 8px;
+        gap: var(--space-2);
     }
-    
+
     .scan-preview-row {
         display: flex;
         align-items: center;
@@ -855,45 +1000,45 @@ def inject_css() -> None:
         margin-bottom: var(--space-4);
     }
     .scan-preview-step {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 500;
-        font-size: 0.68rem;
-        letter-spacing: 0.05em;
+        font-size: var(--text-xs);
+        letter-spacing: var(--tracking-wide);
         color: var(--text-muted);
         background: transparent; /* Stripped heavy boxes */
         padding: 0;
         border: none;
     }
     .scan-preview-arrow {
-        color: var(--border);
-        font-size: 0.8rem;
+        color: var(--border-strong);
+        font-size: var(--text-sm);
     }
-    
+
     div.element-container:has(.scan-security-tag) {
         margin-top: -8px !important;
     }
     .scan-security-tag {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.65rem;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
         color: var(--text-muted);
         display: flex;
         align-items: center;
-        gap: 8px;
-        background: rgba(76, 175, 80, 0.05); /* Green tint */
-        border: 1px solid rgba(76, 175, 80, 0.2);
-        padding: 8px 12px;
-        border-radius: 4px;
+        gap: var(--space-2);
+        background: var(--success-wash); /* Green tint */
+        border: 1px solid var(--success-line);
+        padding: var(--space-2) var(--space-2h);
+        border-radius: var(--radius-sm);
     }
 
     .scan-input-section {
         padding: var(--space-5) 0 var(--space-4);
     }
     .scan-intro {
-        font-family: 'Fraunces', serif;
+        font-family: var(--font-serif);
         font-weight: 400;
-        font-size: 1.0625rem;
+        font-size: var(--text-md);
         color: var(--text-muted);
-        line-height: 1.65;
+        line-height: var(--leading-relaxed);
         margin: 0 0 var(--space-4) 0; /* Reduced from space-5 */
     }
     .scan-or-divider {
@@ -908,26 +1053,26 @@ def inject_css() -> None:
         background: var(--border);
     }
     .scan-or-label {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 400;
-        font-size: 0.68rem;
-        letter-spacing: 0.16em;
+        font-size: var(--text-xs);
+        letter-spacing: var(--tracking-caps);
         color: var(--text-muted);
         flex-shrink: 0;
     }
     .scan-helper {
-        font-family: 'Fraunces', serif !important;
+        font-family: var(--font-serif) !important;
         font-weight: 400;
-        font-size: 1.05rem;
-        line-height: 1.65;
+        font-size: var(--text-md);
+        line-height: var(--leading-relaxed);
         color: var(--text-muted);
         margin-top: 0 !important; /* Tuck tightly against the button */
     }
     .scan-error-line {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 400;
-        font-size: 0.78rem;
-        color: var(--accent-red);
+        font-size: var(--text-sm);
+        color: var(--color-danger);
         margin-top: var(--space-3);
     }
     .scan-results-section {
@@ -935,11 +1080,11 @@ def inject_css() -> None:
         margin-top: var(--space-4) !important; /* Reduced from 32px */
     }
     .scan-summary {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 400;
-        font-size: 0.78rem;
+        font-size: var(--text-sm);
         color: var(--text-muted);
-        margin-bottom: 32px !important;
+        margin-bottom: var(--space-5) !important;
     }
     /* Direct row hover with a visible opacity */
     .ledger-row {
@@ -947,50 +1092,52 @@ def inject_css() -> None:
         display: grid;
         grid-template-columns: 2.5rem 1fr auto;
         gap: var(--space-4);
-        padding: 12px 12px !important; /* Tighter padding for vertical balance */
+        padding: var(--space-2h) var(--space-2h) !important; /* Tighter padding for vertical balance */
         align-items: center !important;
         margin: 0 !important;
-        transition: background-color 0.15s ease;
+        transition: background-color var(--duration-fast) ease;
     }
 
-    .ledger-row:hover {
-        background-color: rgba(255, 255, 255, 0.08) !important;
-        border-radius: 4px;
-        cursor: default;
+    @media (hover: hover) {
+        .ledger-row:hover {
+            background-color: var(--neutral-wash-2) !important;
+            border-radius: var(--radius-sm);
+            cursor: default;
+        }
     }
     .ledger-row:last-child {
         border-bottom: 1px solid var(--border);
     }
     .ledger-index {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 500;
-        font-size: 0.72rem;
+        font-size: var(--text-xs);
         color: var(--accent-amber);
-        line-height: 1;
+        line-height: var(--leading-none);
     }
     .ledger-path {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 400;
-        font-size: 0.78rem;
+        font-size: var(--text-sm);
         color: var(--text-primary);
-        line-height: 1.4;
-        word-break: break-all;
+        line-height: var(--leading-snug);
+        overflow-wrap: anywhere;
     }
     .ledger-meta-missing {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 500;
-        font-size: 0.72rem;
+        font-size: var(--text-xs);
         color: var(--accent-amber);
-        line-height: 1;
+        line-height: var(--leading-none);
         white-space: nowrap;
         text-align: right;
     }
     .ledger-meta-clean {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 400;
-        font-size: 0.72rem;
+        font-size: var(--text-xs);
         color: var(--text-muted);
-        line-height: 1;
+        line-height: var(--leading-none);
         white-space: nowrap;
         text-align: right;
     }
@@ -999,40 +1146,45 @@ def inject_css() -> None:
         margin-top: 0 !important; /* Rely entirely on Streamlit's neutralized natural gap */
     }
     .stFileUploader label,
+    .stSelectbox label,
     .stTextInput label {
-        font-family: 'IBM Plex Mono', monospace !important;
-        font-size: 0.72rem !important;
+        font-family: var(--font-mono) !important;
+        font-size: var(--text-xs) !important;
         font-weight: 400 !important;
-        letter-spacing: 0.08em !important;
+        letter-spacing: var(--tracking-wider) !important;
         color: var(--text-muted) !important;
         text-transform: uppercase !important;
     }
-    .stFileUploader > div,
-    .stTextInput > div > div {
+    .stFileUploader > div {
         background-color: var(--surface) !important;
         border: 1px solid var(--border) !important;
         border-radius: var(--radius-md) !important;
     }
+    .stTextInput > div > div {
+        background-color: var(--input-bg) !important;
+        border: 1px solid var(--input-border) !important;
+        border-radius: var(--input-radius) !important;
+    }
     .stTextInput input {
-        background-color: var(--surface) !important;
-        color: var(--text-primary) !important;
-        font-family: 'IBM Plex Mono', monospace !important;
-        font-size: 0.85rem !important;
+        background-color: var(--input-bg) !important;
+        color: var(--input-fg) !important;
+        font-family: var(--font-mono) !important;
+        font-size: var(--text-sm) !important;
         border: none !important;
-        border-radius: var(--radius-md) !important;
+        border-radius: var(--input-radius) !important;
     }
     /* Absolute override for Streamlit input placeholders */
-    div[data-testid="stTextInput"] input::-webkit-input-placeholder {
-        color: #A0A0A0 !important;
+    .stApp input::-webkit-input-placeholder {
+        color: var(--input-placeholder) !important;
         opacity: 1 !important;
-        -webkit-text-fill-color: #A0A0A0 !important;
+        -webkit-text-fill-color: var(--input-placeholder) !important;
     }
-    div[data-testid="stTextInput"] input::-moz-placeholder {
-        color: #A0A0A0 !important;
+    .stApp input::-moz-placeholder {
+        color: var(--input-placeholder) !important;
         opacity: 1 !important;
     }
-    div[data-testid="stTextInput"] input::placeholder {
-        color: #A0A0A0 !important;
+    .stApp input::placeholder {
+        color: var(--input-placeholder) !important;
         opacity: 1 !important;
     }
     /* Absolute override for Streamlit input wrappers & focus states */
@@ -1043,7 +1195,7 @@ def inject_css() -> None:
     }
     div[data-baseweb="input"]:focus-within,
     .stTextInput > div > div:focus-within {
-        border-color: var(--accent-amber) !important;
+        border-color: var(--input-border-focus) !important;
         box-shadow: none !important;
     }
 
@@ -1055,7 +1207,7 @@ def inject_css() -> None:
     /* Absolute override for Streamlit Expander content padding */
     div[data-testid="stExpanderDetails"],
     div[data-testid="stExpander"] details > div {
-        padding-top: 24px !important;
+        padding-top: var(--space-4) !important;
     }
 
     /* -- Severity Pips (Scan Ledger) -- */
@@ -1064,21 +1216,22 @@ def inject_css() -> None:
         width: 8px;
         height: 8px;
         border-radius: 50%;
-        margin-right: 10px;
+        margin-right: var(--space-2);
         vertical-align: middle;
         transform: translateY(-1px);
     }
-    .pip-green { background-color: #4CAF50; }
-    .pip-amber { background-color: var(--accent-amber); }
-    .pip-red { background-color: var(--accent-red); }
+    .pip-green { background-color: var(--color-success); }
+    .pip-amber { background-color: var(--color-warning); }
+    .pip-red { background-color: var(--color-danger); }
 
     .system-note {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.68rem;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
         color: var(--text-muted);
         margin-top: var(--space-4);
+        margin-bottom: var(--space-4);
         padding-top: var(--space-3);
-        border-top: 1px dashed rgba(255, 255, 255, 0.1);
+        border-top: 1px dashed var(--border-subtle);
     }
 
     /* ================================================================
@@ -1091,40 +1244,40 @@ def inject_css() -> None:
         grid-template-columns: repeat(3, 1fr);
         gap: var(--space-3);
         margin: var(--space-4) 0 var(--space-4) 0;
-        border: 1px solid var(--border);
-        border-radius: var(--radius-md);
-        background: var(--surface);
+        border: 1px solid var(--card-border);
+        border-radius: var(--card-radius);
+        background: var(--card-bg);
         padding: var(--space-3) var(--space-4);
     }
-    @media (max-width: 650px) { 
-        .telemetry-grid { grid-template-columns: 1fr; gap: var(--space-4); } 
+    @media (max-width: 640px) {
+        .telemetry-grid { grid-template-columns: 1fr; gap: var(--space-4); }
     }
     .telemetry-col {
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: var(--space-1h);
     }
     .tel-label {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.6rem;
-        letter-spacing: 0.12em;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        letter-spacing: var(--tracking-caps);
         text-transform: uppercase;
         color: var(--text-muted);
     }
     .tel-value {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 500;
-        font-size: 0.72rem;
+        font-size: var(--text-xs);
         color: var(--accent-amber);
     }
 
     /* Fraunces intro line (same treatment as .scan-intro / .why-body) */
     .gen-intro {
-        font-family: 'Fraunces', serif;
+        font-family: var(--font-serif);
         font-weight: 400;
-        font-size: 1.0625rem;
+        font-size: var(--text-md);
         color: var(--text-muted);
-        line-height: 1.65;
+        line-height: var(--leading-relaxed);
         margin: 0 0 var(--space-2) 0; /* Set to space-2 for perfect symmetry */
     }
 
@@ -1134,15 +1287,15 @@ def inject_css() -> None:
     }
     .gen-outcome-section {
         padding: 0 !important;
-        margin-top: 0 !important; 
+        margin-top: 0 !important;
     }
 
     /* DOCUMENTATION READY label */
     .gen-outcome-label {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 400;
-        font-size: 0.68rem;
-        letter-spacing: 0.12em;
+        font-size: var(--text-xs);
+        letter-spacing: var(--tracking-caps);
         text-transform: uppercase;
         color: var(--text-muted);
         margin-bottom: var(--space-2);
@@ -1150,30 +1303,30 @@ def inject_css() -> None:
 
     /* Summary / file-count line */
     .gen-outcome-summary {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 400;
-        font-size: 0.78rem;
+        font-size: var(--text-sm);
         color: var(--text-muted);
         margin-bottom: var(--space-3);
     }
 
     /* -- Generation Outcome Sub-summary -- */
     .gen-outcome-sub {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.72rem;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
         color: var(--text-muted);
         margin-top: var(--space-2);
-        line-height: 1.5;
+        line-height: var(--leading-normal);
     }
 
     /* Rate-limit error message */
     .gen-error-msg {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 400;
-        font-size: 0.78rem;
-        color: var(--accent-red);
+        font-size: var(--text-sm);
+        color: var(--color-danger);
         margin-bottom: var(--space-3);
-        line-height: 1.55;
+        line-height: var(--leading-normal);
     }
 
     /* Aggressively neutralize empty Streamlit containers for generation markers */
@@ -1196,24 +1349,24 @@ def inject_css() -> None:
 
     /* Empty-state heading and subline */
     .docs-empty-head {
-        font-family: 'Fraunces', serif;
+        font-family: var(--font-serif);
         font-weight: 700;
-        font-size: 1.25rem;
+        font-size: var(--text-lg);
         color: var(--text-primary);
         margin: var(--space-6) 0 var(--space-3) 0;
     }
     .docs-empty-sub {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 400;
-        font-size: 0.78rem;
+        font-size: var(--text-sm);
         color: var(--text-muted);
         margin-bottom: var(--space-5);
     }
 
     /* All-clean state message */
     .docs-all-clean {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.8rem;
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
         color: var(--text-muted);
         margin-top: var(--space-4); /* Added breathing room from preceding blocks */
         margin-bottom: var(--space-4);
@@ -1228,9 +1381,9 @@ def inject_css() -> None:
 
     /* Remove clean line borders */
     .docs-clean-line {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 400;
-        font-size: 0.78rem;
+        font-size: var(--text-sm);
         color: var(--text-muted);
         padding: var(--space-2) 0; /* Reduced padding */
         border: none !important;
@@ -1239,33 +1392,33 @@ def inject_css() -> None:
         border: none !important;
     }
     .docs-file-path {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 500;
-        font-size: 0.78rem;
+        font-size: var(--text-sm);
         color: var(--accent-amber);
-        letter-spacing: 0.04em;
+        letter-spacing: var(--tracking-wide);
         margin-bottom: var(--space-2);
     }
 
     /* Module overview paragraph */
     .docs-overview {
-        font-family: 'Fraunces', serif;
+        font-family: var(--font-serif);
         font-weight: 400;
-        font-size: 1.0625rem;
+        font-size: var(--text-md);
         color: var(--text-muted);
-        line-height: 1.65;
+        line-height: var(--leading-relaxed);
         margin: 0 0 var(--space-5) 0;
         overflow: hidden;
     }
 
     /* Fixed Drop Cap typography */
     .docs-overview.drop-cap::first-letter {
-        font-family: 'Fraunces', serif;
+        font-family: var(--font-serif);
         font-weight: 700;
         font-size: 3.5em !important;
         line-height: 0.8 !important;
-        margin-right: 8px !important;
-        margin-top: 4px !important;
+        margin-right: var(--space-2) !important;
+        margin-top: var(--space-1) !important;
         float: left !important;
         color: var(--text-primary);
     }
@@ -1290,26 +1443,26 @@ def inject_css() -> None:
         flex-wrap: wrap;
     }
     .docs-fn-name {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 500;
-        font-size: 0.85rem;
+        font-size: var(--text-sm);
         color: var(--text-primary);
-        line-height: 1;
+        line-height: var(--leading-none);
     }
 
     .ai-draft-badge {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 500;
-        font-size: 0.58rem;
-        letter-spacing: 0.1em;
+        font-size: var(--text-xs);
+        letter-spacing: var(--tracking-widest);
         color: var(--accent-amber);
         border: 1px solid var(--accent-amber);
         border-radius: var(--radius-pill);
-        padding: 2px 12px !important; /* Increased horizontal padding */
+        padding: var(--space-0h) var(--space-2h) !important; /* Increased horizontal padding */
         cursor: default;
         user-select: none;
         pointer-events: none;
-        line-height: 1;
+        line-height: var(--leading-none);
         display: inline-block;
         vertical-align: middle;
     }
@@ -1321,7 +1474,7 @@ def inject_css() -> None:
         gap: var(--space-4);
         align-items: start;
     }
-    @media (max-width: 580px) {
+    @media (max-width: 640px) {
         .docs-fn-cols {
             grid-template-columns: 1fr;
         }
@@ -1329,27 +1482,26 @@ def inject_css() -> None:
 
     /* Docstring column */
     .docs-docstring {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 400;
-        font-size: 0.75rem;
+        font-size: var(--text-sm);
         color: var(--text-muted);
-        line-height: 1.65;
+        line-height: var(--leading-relaxed);
     }
 
-    /* Premium structured code blocks - Bypassing Streamlit's native <pre> styles */
-    div[data-testid="stMarkdownContainer"] pre.docs-source-pre,
+    /* Premium structured code blocks - Bypassing Streamlit's native pre styles */
     .docs-source-pre {
-        background: #121212 !important;
-        border: 1px solid rgba(255, 255, 255, 0.05) !important;
-        border-radius: 8px !important;
-        padding: 16px !important;
+        background: var(--surface-code) !important;
+        border: 1px solid var(--border-faint) !important;
+        border-radius: var(--radius-base) !important;
+        padding: var(--space-3) !important;
         margin: 0 !important;
-        font-family: 'IBM Plex Mono', monospace !important;
-        font-size: 0.72rem !important;
+        font-family: var(--font-mono) !important;
+        font-size: var(--text-xs) !important;
         color: var(--text-muted) !important;
-        line-height: 1.6 !important;
+        line-height: var(--leading-relaxed) !important;
         white-space: pre-wrap !important;
-        word-break: break-all !important;
+        overflow-wrap: anywhere !important;
         overflow: hidden !important;
     }
 
@@ -1368,22 +1520,21 @@ def inject_css() -> None:
 
     /* -- Docs Screen Polish -- */
     .module-telemetry {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.65rem;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
         color: var(--text-muted);
-        letter-spacing: 0.05em;
+        letter-spacing: var(--tracking-wide);
         border-bottom: 1px solid var(--border);
         padding-bottom: var(--space-3);
         margin-bottom: var(--space-4);
         margin-top: -8px; /* Tucks it closer to the file path */
     }
     .docs-download-context {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.65rem;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
         color: var(--text-muted);
         text-align: center;
         margin-bottom: var(--space-3);
-        opacity: 0.8;
     }
 
     /* ================================================================
@@ -1392,29 +1543,28 @@ def inject_css() -> None:
 
     /* -- Q&A Screen Polish -- */
     .vector-status-bar {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.68rem;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
         color: var(--text-muted);
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-md);
-        padding: 8px 12px;
+        background: var(--card-bg);
+        border: 1px solid var(--card-border);
+        border-radius: var(--card-radius);
+        padding: var(--space-2) var(--space-2h);
         margin-bottom: var(--space-4);
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-2);
     }
     .vector-active-dot {
-        color: #4CAF50;
-        font-size: 0.8rem;
-        line-height: 1;
+        color: var(--color-success);
+        font-size: var(--text-sm);
+        line-height: var(--leading-none);
     }
     .qa-disclaimer {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.65rem;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
         color: var(--text-muted);
         text-align: center;
-        opacity: 0.7;
         margin-top: var(--space-2);
     }
     div.element-container:has(.qa-disclaimer) {
@@ -1423,20 +1573,20 @@ def inject_css() -> None:
 
     /* Intro line (shown only when qa_chat_history is empty) */
     .qa-intro {
-        font-family: 'Fraunces', serif;
+        font-family: var(--font-serif);
         font-weight: 400;
-        font-size: 1.0625rem;
+        font-size: var(--text-md);
         color: var(--text-muted);
-        line-height: 1.65;
+        line-height: var(--leading-relaxed);
         margin: 0 0 var(--space-4) 0; /* Reduced from space-5 */
     }
 
     /* Example questions label */
     .qa-chips-label {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 400;
-        font-size: 0.68rem;
-        letter-spacing: 0.12em;
+        font-size: var(--text-xs);
+        letter-spacing: var(--tracking-caps);
         text-transform: uppercase;
         color: var(--text-muted);
         margin-bottom: var(--space-3);
@@ -1448,22 +1598,25 @@ def inject_css() -> None:
         color: var(--text-primary) !important;
         border: 1px solid var(--border) !important;
         border-radius: var(--radius-lg) !important;
-        font-family: 'Fraunces', serif !important;
+        font-family: var(--font-serif) !important;
         font-weight: 400 !important;
-        font-size: 0.85rem !important; /* Slightly smaller for a chip feel */
-        padding: 8px 16px !important; /* Sleek vertical padding */
+        font-size: var(--text-sm) !important; /* Slightly smaller for a chip feel */
+        padding: var(--space-2) var(--space-3) !important; /* Sleek vertical padding */
         width: 100% !important;
         height: auto !important; /* Let height shrink to fit */
-        line-height: 1.4 !important;
+        line-height: var(--leading-snug) !important;
         white-space: normal !important;
+        text-transform: none !important; /* a suggested question reads as a sentence */
         text-align: left !important; /* Force text to the left */
         justify-content: flex-start !important; /* Force flex children to the left */
-        transition: border-color 0.15s ease, background-color 0.15s ease !important;
+        transition: border-color var(--duration-fast) ease, background-color var(--duration-fast) ease !important;
     }
-    div:has(.qa-chip-marker) + div .stButton > button:hover {
-        border-color: var(--accent-amber) !important;
-        background-color: rgba(232, 179, 57, 0.06) !important;
-        color: var(--accent-amber) !important;
+    @media (hover: hover) {
+        div:has(.qa-chip-marker) + div .stButton > button:hover {
+            border-color: var(--accent-amber) !important;
+            background-color: var(--accent-wash-2) !important;
+            color: var(--accent-amber) !important;
+        }
     }
 
     /* Hide the markers */
@@ -1507,10 +1660,10 @@ def inject_css() -> None:
     }
 
     .qa-turn-label {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 500;
-        font-size: 0.85rem;
-        line-height: 1;
+        font-size: var(--text-sm);
+        line-height: var(--leading-none);
     }
     .qa-q-label {
         color: var(--accent-amber);
@@ -1519,12 +1672,12 @@ def inject_css() -> None:
         color: var(--text-muted);
     }
     .qa-q-text {
-        font-family: 'Fraunces', serif;
+        font-family: var(--font-serif);
         font-weight: 700;
-        font-size: 1.15rem;
+        font-size: var(--text-lg);
         color: var(--text-primary);
-        line-height: 1.35;
-        letter-spacing: -0.01em;
+        line-height: var(--leading-snug);
+        letter-spacing: var(--tracking-snug);
     }
     .qa-a-body {
         display: flex;
@@ -1533,11 +1686,11 @@ def inject_css() -> None:
         gap: var(--space-2);
     }
     .qa-a-text {
-        font-family: 'Fraunces', serif;
+        font-family: var(--font-serif);
         font-weight: 400;
-        font-size: 1.05rem;
+        font-size: var(--text-md);
         color: var(--text-primary);
-        line-height: 1.6;
+        line-height: var(--leading-relaxed);
     }
     .qa-a-fallback {
         color: var(--text-muted) !important;
@@ -1545,18 +1698,18 @@ def inject_css() -> None:
 
     /* Citation pill -- amber outline mono pill */
     .qa-citation-pill {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 500;
-        font-size: 0.65rem;
-        letter-spacing: 0.08em;
+        font-size: var(--text-xs);
+        letter-spacing: var(--tracking-wider);
         color: var(--accent-amber);
         border: 1px solid var(--accent-amber);
         border-radius: var(--radius-pill);
-        padding: 3px 10px;
+        padding: var(--space-1) var(--space-2h);
         cursor: default;
         user-select: none;
         pointer-events: none;
-        line-height: 1;
+        line-height: var(--leading-none);
         display: inline-block;
         margin-top: var(--space-1);
     }
@@ -1566,11 +1719,11 @@ def inject_css() -> None:
         margin-top: -1rem !important; /* Pull up to the suggestion chips */
     }
     .qa-ask-wrap {
-        padding: 0 !important; 
+        padding: 0 !important;
     }
 
     /* Streamlit Form border reset */
-    div[data-testid="stForm"] {
+    .st-key-enterprise_sso_form {
         border: none !important;
         padding: 0 !important;
     }
@@ -1585,26 +1738,24 @@ def inject_css() -> None:
     }
 
     /* File uploader Browse files button styling override */
-    .stFileUploader button,
-    [data-testid="stFileUploaderDropzone"] button,
-    [data-testid="stFileUploader"] [data-testid="stBaseButton-secondary"] {
+    .st-key-scan_file_upload button {
         background-color: transparent !important;
         color: var(--accent-amber) !important;
         border: 1px solid var(--accent-amber) !important;
         border-radius: var(--radius-md) !important;
-        font-family: 'IBM Plex Mono', monospace !important;
+        font-family: var(--font-mono) !important;
         font-weight: 500 !important;
-        font-size: 0.75rem !important;
-        letter-spacing: 0.08em !important;
+        font-size: var(--button-font-size) !important;
+        letter-spacing: var(--tracking-wider) !important;
         padding: var(--space-2) var(--space-4) !important;
-        transition: background-color 0.15s ease, opacity 0.15s ease !important;
+        transition: background-color var(--duration-fast) ease, opacity var(--duration-fast) ease !important;
     }
-    .stFileUploader button:hover,
-    [data-testid="stFileUploaderDropzone"] button:hover,
-    [data-testid="stFileUploader"] [data-testid="stBaseButton-secondary"]:hover {
-        background-color: rgba(232, 179, 57, 0.08) !important;
-        color: var(--accent-amber) !important;
-        opacity: 1 !important;
+    @media (hover: hover) {
+        .st-key-scan_file_upload button:hover {
+            background-color: var(--accent-wash-3) !important;
+            color: var(--accent-amber) !important;
+            opacity: 1 !important;
+        }
     }
 
     /* ================================================================
@@ -1613,9 +1764,9 @@ def inject_css() -> None:
 
     /* Expander styling in Scan screen */
     .stExpander {
-        background-color: var(--surface) !important;
-        border: 1px solid var(--border) !important;
-        border-radius: var(--radius-md) !important;
+        background-color: var(--card-bg) !important;
+        border: 1px solid var(--card-border) !important;
+        border-radius: var(--card-radius) !important;
         margin-top: var(--space-2) !important;
         margin-bottom: var(--space-4) !important;
     }
@@ -1623,165 +1774,18 @@ def inject_css() -> None:
         border: none !important;
     }
     .stExpander summary {
-        font-family: 'IBM Plex Mono', monospace !important;
-        font-size: 0.72rem !important;
+        font-family: var(--font-mono) !important;
+        font-size: var(--text-xs) !important;
         font-weight: 500 !important;
-        letter-spacing: 0.08em !important;
+        letter-spacing: var(--tracking-wider) !important;
         color: var(--text-muted) !important;
-        text-transform: uppercase !important;
+        /* No text-transform: titles contain function and class names, and
+           get_domain_name is not GET_DOMAIN_NAME. Fixed labels are written in capitals. */
     }
-    .stExpander summary:hover {
-        color: var(--accent-amber) !important;
-    }
-
-    /* Nav rail Wordmark button -- scoped to column containing #rail-wordmark */
-    div[data-testid="column"]:has(#rail-wordmark) .stButton > button,
-    div[data-testid="stColumn"]:has(#rail-wordmark) .stButton > button,
-    div[data-testid="column"]:has(#rail-wordmark) .stButton > button *,
-    div[data-testid="stColumn"]:has(#rail-wordmark) .stButton > button * {
-        background: transparent !important;
-        border: none !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        font-family: 'Fraunces', Georgia, serif !important;
-        font-weight: 700 !important;
-        font-size: 1.4rem !important;
-        color: var(--text-primary) !important;
-        letter-spacing: -0.02em !important;
-        line-height: 1 !important;
-        cursor: pointer !important;
-        text-align: left !important;
-        width: auto !important;
-        white-space: nowrap !important;
-        font-feature-settings: normal !important;
-        font-variant-ligatures: normal !important;
-        box-shadow: none !important;
-        outline: none !important;
-    }
-    div[data-testid="column"]:has(#rail-wordmark) .stButton > button:hover,
-    div[data-testid="stColumn"]:has(#rail-wordmark) .stButton > button:hover,
-    div[data-testid="column"]:has(#rail-wordmark) .stButton > button:hover *,
-    div[data-testid="stColumn"]:has(#rail-wordmark) .stButton > button:hover * {
-        color: var(--accent-amber) !important;
-        background: transparent !important;
-        opacity: 1 !important;
-    }
-
-    /* Nav rail step buttons -- scoped to columns containing each step marker */
-    div[data-testid="column"]:has(#rail-step-scan) .stButton > button,
-    div[data-testid="stColumn"]:has(#rail-step-scan) .stButton > button,
-    div[data-testid="column"]:has(#rail-step-scan) .stButton > button *,
-    div[data-testid="stColumn"]:has(#rail-step-scan) .stButton > button *,
-    div[data-testid="column"]:has(#rail-step-generate) .stButton > button,
-    div[data-testid="stColumn"]:has(#rail-step-generate) .stButton > button,
-    div[data-testid="column"]:has(#rail-step-generate) .stButton > button *,
-    div[data-testid="stColumn"]:has(#rail-step-generate) .stButton > button *,
-    div[data-testid="column"]:has(#rail-step-docs) .stButton > button,
-    div[data-testid="stColumn"]:has(#rail-step-docs) .stButton > button,
-    div[data-testid="column"]:has(#rail-step-docs) .stButton > button *,
-    div[data-testid="stColumn"]:has(#rail-step-docs) .stButton > button *,
-    div[data-testid="column"]:has(#rail-step-qa) .stButton > button,
-    div[data-testid="stColumn"]:has(#rail-step-qa) .stButton > button,
-    div[data-testid="column"]:has(#rail-step-qa) .stButton > button *,
-    div[data-testid="stColumn"]:has(#rail-step-qa) .stButton > button * {
-        background: transparent !important;
-        border: none !important;
-        padding: 0 !important;
-        margin: 0 auto !important;
-        font-family: 'IBM Plex Mono', monospace !important;
-        font-weight: 500 !important;
-        font-size: 0.72rem !important;
-        letter-spacing: 0.1em !important;
-        color: var(--text-primary) !important;
-        cursor: pointer !important;
-        text-align: center !important;
-        line-height: 1 !important;
-        text-transform: uppercase !important;
-        width: auto !important;
-        display: block !important;
-        white-space: nowrap !important;
-        box-shadow: none !important;
-        outline: none !important;
-        font-feature-settings: 'liga' 0, 'calt' 0 !important;
-        font-variant-ligatures: none !important;
-    }
-    div[data-testid="column"]:has(#rail-step-scan) .stButton > button:hover,
-    div[data-testid="stColumn"]:has(#rail-step-scan) .stButton > button:hover,
-    div[data-testid="column"]:has(#rail-step-scan) .stButton > button:hover *,
-    div[data-testid="stColumn"]:has(#rail-step-scan) .stButton > button:hover *,
-    div[data-testid="column"]:has(#rail-step-generate) .stButton > button:hover,
-    div[data-testid="stColumn"]:has(#rail-step-generate) .stButton > button:hover,
-    div[data-testid="column"]:has(#rail-step-generate) .stButton > button:hover *,
-    div[data-testid="stColumn"]:has(#rail-step-generate) .stButton > button:hover *,
-    div[data-testid="column"]:has(#rail-step-docs) .stButton > button:hover,
-    div[data-testid="stColumn"]:has(#rail-step-docs) .stButton > button:hover,
-    div[data-testid="column"]:has(#rail-step-docs) .stButton > button:hover *,
-    div[data-testid="stColumn"]:has(#rail-step-docs) .stButton > button:hover *,
-    div[data-testid="column"]:has(#rail-step-qa) .stButton > button:hover,
-    div[data-testid="stColumn"]:has(#rail-step-qa) .stButton > button:hover,
-    div[data-testid="column"]:has(#rail-step-qa) .stButton > button:hover *,
-    div[data-testid="stColumn"]:has(#rail-step-qa) .stButton > button:hover * {
-        color: var(--accent-amber) !important;
-        background: transparent !important;
-        opacity: 1 !important;
-    }
-
-    /* Nav rail breadcrumb indicators */
-    .rail-current {
-        font-family: 'IBM Plex Mono', monospace;
-        font-weight: 500;
-        font-size: 0.72rem;
-        letter-spacing: 0.1em;
-        color: var(--accent-amber);
-        text-transform: uppercase;
-        text-align: center;
-        line-height: 1;
-        border-bottom: 1px solid var(--accent-amber);
-        padding-bottom: 2px;
-        display: block;
-        margin: 0 auto;
-        white-space: nowrap !important;
-    }
-    .rail-muted {
-        font-family: 'IBM Plex Mono', monospace;
-        font-weight: 400;
-        font-size: 0.72rem;
-        letter-spacing: 0.1em;
-        color: var(--text-muted);
-        text-transform: uppercase;
-        text-align: center;
-        line-height: 1;
-        cursor: default;
-        user-select: none;
-        display: block;
-        margin: 0 auto;
-        white-space: nowrap !important;
-    }
-    .rail-arrow {
-        font-family: 'IBM Plex Mono', monospace;
-        font-weight: 400;
-        font-size: 0.72rem;
-        color: var(--border);
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        height: 100% !important;
-        line-height: 1 !important;
-        user-select: none;
-        white-space: nowrap !important;
-        transform: translateY(-3px) !important; /* Stronger optical nudge UP */
-    }
-    .rail-arrow svg {
-        display: block !important;
-        margin: auto !important;
-    }
-    div.element-container:has(.nav-rail-divider) {
-        margin-bottom: -1rem !important; /* Neutralize Streamlit's native gap */
-    }
-    .nav-rail-divider {
-        border: none !important;
-        border-top: 1px solid var(--border) !important;
-        margin: var(--space-2) 0 0 0 !important; /* Zeroed bottom margin */
+    @media (hover: hover) {
+        .stExpander summary:hover {
+            color: var(--accent-amber) !important;
+        }
     }
 
     /* Scan pre-flight estimate */
@@ -1790,18 +1794,18 @@ def inject_css() -> None:
         margin-bottom: 0 !important;
     }
     .scan-estimate-body {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 400;
-        font-size: 0.78rem;
+        font-size: var(--text-sm);
         color: var(--text-muted);
         margin: 0;
     }
     .scan-estimate-clean {
-        font-family: 'Fraunces', serif;
+        font-family: var(--font-serif);
         font-weight: 400;
-        font-size: 1.0625rem;
+        font-size: var(--text-md);
         color: var(--text-muted);
-        line-height: 1.65;
+        line-height: var(--leading-relaxed);
         margin: var(--space-4) 0 var(--space-2) 0;
     }
 
@@ -1825,21 +1829,23 @@ def inject_css() -> None:
         gap: var(--space-2); /* Tighter gap for pills */
     }
     .docs-jump-link {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 400;
-        font-size: 0.72rem;
+        font-size: var(--text-xs);
         color: var(--text-primary) !important;
         text-decoration: none !important; /* Remove underline */
         background-color: var(--surface);
         border: 1px solid var(--border);
         border-radius: var(--radius-md); /* Pill shape */
-        padding: 6px 12px;
-        transition: all 0.15s ease;
+        padding: var(--space-1h) var(--space-2h);
+        transition: border-color var(--duration-fast) ease, color var(--duration-fast) ease, background-color var(--duration-fast) ease;
     }
-    .docs-jump-link:hover {
-        border-color: var(--accent-amber);
-        color: var(--accent-amber) !important;
-        background-color: rgba(232, 179, 57, 0.05);
+    @media (hover: hover) {
+        .docs-jump-link:hover {
+            border-color: var(--accent-amber);
+            color: var(--accent-amber) !important;
+            background-color: var(--accent-wash-1);
+        }
     }
 
     /* Syntax highlighting */
@@ -1872,18 +1878,18 @@ def inject_css() -> None:
         min-width: 120px;
     }
     .export-stat-value {
-        font-family: 'Fraunces', serif;
+        font-family: var(--font-serif);
         font-weight: 700;
-        font-size: 1.6rem !important; /* Reduced from 2rem */
+        font-size: var(--text-xl) !important; /* Reduced from 2rem */
         color: var(--accent-amber);
-        letter-spacing: -0.02em;
-        line-height: 1;
+        letter-spacing: var(--tracking-tight);
+        line-height: var(--leading-none);
     }
     .export-stat-label {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 400;
-        font-size: 0.68rem;
-        letter-spacing: 0.12em;
+        font-size: var(--text-xs);
+        letter-spacing: var(--tracking-caps);
         text-transform: uppercase;
         color: var(--text-muted);
     }
@@ -1897,12 +1903,12 @@ def inject_css() -> None:
        ================================================================ */
 
     .arch-heading {
-        font-family: 'Fraunces', serif;
+        font-family: var(--font-serif);
         font-weight: 600;
-        font-size: 1.45rem;
+        font-size: var(--text-xl);
         color: var(--text-primary);
-        line-height: 1.25;
-        letter-spacing: -0.02em;
+        line-height: var(--leading-snug);
+        letter-spacing: var(--tracking-tight);
         margin: 0 0 var(--space-5) 0; /* Reduced from space-6 */
         max-width: 540px;
     }
@@ -1914,114 +1920,48 @@ def inject_css() -> None:
         grid-template-columns: 10rem 1fr;
         gap: var(--space-5);
         padding: var(--space-4) 0 !important; /* Reduced from 32px for tighter rows */
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+        border-bottom: 1px solid var(--border-subtle) !important;
         align-items: start !important; /* Prevent text shifting */
     }
     .arch-step-label {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 500;
-        font-size: 0.72rem;
-        letter-spacing: 0.1em;
+        font-size: var(--text-xs);
+        letter-spacing: var(--tracking-widest);
         text-transform: uppercase;
         color: var(--accent-amber);
-        line-height: 1;
+        line-height: var(--leading-none);
         white-space: nowrap;
     }
     .arch-step-body {
-        font-family: 'Fraunces', serif;
+        font-family: var(--font-serif);
         font-weight: 400;
-        font-size: 1.0rem;
+        font-size: var(--text-base);
         color: var(--text-muted);
-        line-height: 1.65;
+        line-height: var(--leading-relaxed);
         /* max-width removed to allow full horizontal span */
     }
 
     /* -- Architecture Screen Polish -- */
     .arch-io-tag {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.65rem;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
         color: var(--accent-amber);
         margin-top: var(--space-3);
-        letter-spacing: 0.05em;
+        letter-spacing: var(--tracking-wide);
         opacity: 0.85;
     }
     .arch-infra-telemetry {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.65rem;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
         color: var(--text-muted);
         text-align: center;
-        border-top: 1px dashed rgba(255, 255, 255, 0.1);
+        border-top: 1px dashed var(--border-subtle);
         padding-top: var(--space-4);
         margin-top: var(--space-6);
         margin-bottom: var(--space-4);
-        letter-spacing: 0.05em;
-        line-height: 1.6;
-    }
-
-    /* Nav rail -- 5th step: export */
-    div[data-testid="column"]:has(#rail-step-export) .stButton > button,
-    div[data-testid="stColumn"]:has(#rail-step-export) .stButton > button,
-    div[data-testid="column"]:has(#rail-step-export) .stButton > button *,
-    div[data-testid="stColumn"]:has(#rail-step-export) .stButton > button * {
-        background: transparent !important;
-        border: none !important;
-        padding: 0 !important;
-        margin: 0 auto !important;
-        font-family: 'IBM Plex Mono', monospace !important;
-        font-weight: 500 !important;
-        font-size: 0.72rem !important;
-        letter-spacing: 0.1em !important;
-        color: var(--text-primary) !important;
-        cursor: pointer !important;
-        text-align: center !important;
-        line-height: 1 !important;
-        text-transform: uppercase !important;
-        width: auto !important;
-        display: block !important;
-        white-space: nowrap !important;
-        box-shadow: none !important;
-        outline: none !important;
-        font-feature-settings: 'liga' 0, 'calt' 0 !important;
-        font-variant-ligatures: none !important;
-    }
-    div[data-testid="column"]:has(#rail-step-export) .stButton > button:hover,
-    div[data-testid="stColumn"]:has(#rail-step-export) .stButton > button:hover,
-    div[data-testid="column"]:has(#rail-step-export) .stButton > button:hover *,
-    div[data-testid="stColumn"]:has(#rail-step-export) .stButton > button:hover * {
-        color: var(--accent-amber) !important;
-        background: transparent !important;
-        opacity: 1 !important;
-    }
-
-    /* Remove default Streamlit right-padding to make the masthead flush with the grid */
-    div[data-testid="column"]:has(#masthead-how-it-works) {
-        padding-right: 0 !important;
-    }
-
-    /* Bulletproof right-alignment for the masthead button */
-    div:has(#masthead-how-it-works) + div,
-    div:has(#masthead-how-it-works) + div > div,
-    div:has(#masthead-how-it-works) + div .stButton {
-        display: flex !important;
-        justify-content: flex-end !important;
-        width: 100% !important;
-    }
-    div:has(#masthead-how-it-works) + div .stButton > button {
-        background-color: transparent !important;
-        color: var(--accent-amber) !important;
-        border: 1px solid var(--accent-amber) !important;
-        font-size: 0.72rem !important;
-        padding: var(--space-2) var(--space-3) !important;
-        width: auto !important;
-    }
-    div:has(#masthead-how-it-works) + div .stButton > button:hover {
-        background-color: rgba(232, 179, 57, 0.08) !important;
-        color: var(--accent-amber) !important;
-        opacity: 1 !important;
-    }
-    div:has(#masthead-how-it-works) + div .stButton > button:active {
-        background-color: transparent !important;
-        opacity: 0.65 !important;
+        letter-spacing: var(--tracking-wide);
+        line-height: var(--leading-relaxed);
     }
 
     /* Ligature-off for new Session 7 mono classes */
@@ -2035,58 +1975,635 @@ def inject_css() -> None:
 
     /* -- Export Screen Polish -- */
     .archive-manifest {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.75rem;
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
         color: var(--text-muted);
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-md);
+        background: var(--card-bg);
+        border: 1px solid var(--card-border);
+        border-radius: var(--card-radius);
         padding: var(--space-4);
         margin-top: var(--space-4);
         margin-bottom: var(--space-5);
-        line-height: 1.6;
+        line-height: var(--leading-relaxed);
         white-space: pre; /* Preserves the file tree spacing perfectly */
         overflow-x: auto;
     }
     .session-disclaimer {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.65rem;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
         color: var(--text-muted);
-        opacity: 0.7;
         margin-top: var(--space-4);
         text-align: left;
     }
     /* -- File Uploader Sleek Redesign -- */
-    [data-testid="stFileUploaderDropzone"] {
-        background-color: #050505 !important;
-        border: 1px dashed var(--border) !important;
+    .st-key-scan_file_upload section {
+        background-color: var(--surface-sunken) !important;
+        border: 1px dashed var(--border-strong) !important;
         border-radius: var(--radius-md) !important;
         padding: var(--space-4) !important;
-        transition: all 0.2s ease !important;
+        transition: border-color var(--duration-normal) ease, background-color var(--duration-normal) ease !important;
     }
-    [data-testid="stFileUploaderDropzone"]:hover,
-    [data-testid="stFileUploaderDropzone"]:focus-within {
+    .st-key-scan_file_upload section:hover,
+    .st-key-scan_file_upload section:focus-within {
         border-color: var(--accent-amber) !important;
-        background-color: rgba(232, 179, 57, 0.05) !important;
+        background-color: var(--accent-wash-1) !important;
     }
     /* Style the uploaded file list item background */
-    [data-testid="stUploadedFile"] {
-        background-color: #050505 !important;
+    .st-key-scan_file_upload [data-testid="stUploadedFile"] {
+        background-color: var(--surface-sunken) !important;
         border: 1px solid var(--border) !important;
         border-radius: var(--radius-md) !important;
     }
     /* Hide Streamlit's default giant cloud icon */
-    [data-testid="stFileUploaderDropzone"] svg {
+    .st-key-scan_file_upload section svg {
         display: none !important;
     }
     /* Restyle the small instruction text inside the dropzone */
-    [data-testid="stFileUploaderDropzone"] small {
-        font-family: 'IBM Plex Mono', monospace !important;
+    .st-key-scan_file_upload section small {
+        font-family: var(--font-mono) !important;
         color: var(--text-muted) !important;
-        font-size: 0.72rem !important;
-        letter-spacing: 0.05em !important;
+        font-size: var(--text-xs) !important;
+        letter-spacing: var(--tracking-wide) !important;
     }
+
+    /* ================================================================
+       ACCESSIBILITY -- focus, disabled state, reduced motion
+       ================================================================ */
+
+    /* One visible keyboard-focus ring on every control. The :not(#_) pair raises
+       specificity above the nav-rail and marker rules, which reset outlines.
+       Text inputs are left out: their wrapper already turns amber on focus. */
+    .stApp :is(button, a, summary, select, [role="button"], [role="tab"], [tabindex]:not([tabindex="-1"])):focus-visible:not(#_):not(#_) {
+        outline: var(--focus-ring-width) solid var(--focus-ring-color) !important;
+        outline-offset: var(--focus-ring-offset) !important;
+    }
+
+    /* A disabled button looks disabled and says so with the cursor. */
+    .stApp button:disabled:not(#_),
+    .stApp button[disabled]:not(#_) {
+        opacity: var(--opacity-disabled) !important;
+        cursor: not-allowed !important;
+    }
+
+    .stExpander summary {
+        cursor: pointer !important;
+    }
+
+    /* People who ask their system for less motion get the final state at once. */
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+            animation-duration: 0.01ms !important;
+            animation-delay: 0s !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+            scroll-behavior: auto !important;
+        }
+        .typewriter-headline {
+            clip-path: none !important;
+        }
+        .cascade-fade,
+        div.element-container:has(#hero-cta-marker) + div,
+        div.element-container:has(#footer-cta-marker) + div {
+            opacity: 1 !important;
+            transform: none !important;
+        }
+        .anim-typewriter {
+            max-width: 100% !important;
+            border-right-color: transparent !important;
+        }
+    }
+
+    /* ================================================================
+       INTERFACE REVIEW -- rules added from the rendered audit
+       ================================================================ */
+
+    /* Streamlit adds a 16px "link to heading" control to every heading. It is below
+       the 24px target minimum and adds a tab stop per heading; the app has no use for it. */
+    [data-testid="stHeaderActionElements"] {
+        display: none !important;
+    }
+
+    /* Inline code and file names. Streamlit colours them green, which this app
+       reserves for "documented / success". */
+    [data-testid="stMarkdownContainer"] :not(pre) > code {
+        color: var(--text-primary) !important;
+        background-color: var(--surface-raised) !important;
+    }
+
+    /* Figures that sit in columns or change between runs keep one width per digit. */
+    .export-stat-value,
+    .ledger-index,
+    .ledger-meta-missing,
+    .ledger-meta-clean,
+
+    /* Short headings break into even lines; paragraphs avoid a lone last word. */
+    .hero-headline,
+    .arch-heading,
+    .closing-label,
+    .qa-q-text {
+        text-wrap: balance;
+    }
+    .hero-subhead,
+    .why-body,
+    .timeline-desc,
+    .caps-item p,
+    .arch-step-body,
+    .qa-a-text {
+        text-wrap: pretty;
+    }
+
+    /* The button that confirms a deletion uses the danger colour, not the brand accent. */
+    div.element-container:has(.danger-marker) + div.element-container .stButton > button {
+        background-color: var(--button-danger-bg) !important;
+        color: var(--button-danger-fg) !important;
+        border: none !important;
+    }
+    div.element-container:has(.danger-marker) {
+        display: none !important;
+    }
+
+    /* iOS Safari zooms the page when a focused input is under 16px. */
+    @media (max-width: 640px) {
+        .stTextInput input {
+            font-size: var(--text-base) !important;
+        }
+    }
+
+    /* Streamlit 1.67 sets its own monospace (Source Code Pro) on these containers, and
+       the page-level font rule above no longer reaches them. Without this, most of the
+       text rendered in a second, near-identical monospace. Icons are left alone: they
+       are ligatures in an icon font. Headings keep the serif through their own rule. */
+    .stApp [data-testid="stMarkdownContainer"],
+    .stApp [data-testid="stCaptionContainer"],
+    .stApp [data-testid="stWidgetLabel"],
+    .stApp [data-testid="stAlertContainer"],
+    .stApp [data-testid="stExpander"] summary,
+    .stApp .st-key-scan_file_upload section,
+    .stApp [data-baseweb="select"],
+    .stApp [data-baseweb="input"] input,
+    .stApp [data-testid="stText"],
+    .stApp code,
+    .stApp pre {
+        font-family: var(--font-mono) !important;
+    }
+
+    /* ================================================================
+       P0 LAYER -- app shell, top bar, headings, button hierarchy.
+       Later than every rule it overrides; keyed (.st-key-*) selectors only.
+       ================================================================ */
+
+    /* Streamlit's own header bar: the app draws its own. */
+    header[data-testid="stHeader"] { display: none !important; }
+    /* The scroll reset runs on screen changes only; its wrapper must not add a flex gap above the page. */
+    .st-key-scroll_reset,
+    [data-testid="stLayoutWrapper"]:has(> .st-key-scroll_reset) { display: none !important; }
+    [data-testid="stMainBlockContainer"], .block-container {
+        padding-top: var(--space-4) !important;
+    }
+
+    .rail-current, .rail-muted, .st-key-topbar_steps button p {
+        font-family: var(--font-mono) !important;
+        font-size: var(--text-sm) !important;
+        line-height: var(--leading-none) !important;
+        white-space: nowrap;
+    }
+    .rail-current {
+        color: var(--text-primary);
+        font-weight: 500;
+        display: inline-block;
+        padding: var(--space-1h) var(--space-2);
+        border-radius: var(--radius-sm);
+        background: var(--surface-raised);
+        box-shadow: inset 0 -2px 0 var(--accent-amber) !important;
+    }
+    .rail-muted {
+        color: var(--text-muted);
+        opacity: var(--opacity-disabled);
+        display: inline-block;
+        padding: var(--space-1h) var(--space-2);
+        cursor: default;
+        user-select: none;
+    }
+    .rail-arrow {
+        color: var(--border-strong);
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
+        user-select: none;
+    }
+    .topbar-user {
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
+        color: var(--text-muted);
+        padding-right: var(--space-1);
+    }
+
+    /* Page headings: the screen name is the h1 */
+    h1.page-h1, .stMarkdown h1.page-h1, h1.hero-headline {
+        padding: 0 !important;
+        scroll-margin-top: var(--space-6);
+    }
+    h1.hero-headline { margin: 0 0 var(--space-3) !important; }
+    h1.page-h1, .stMarkdown h1.page-h1 {
+        font-family: var(--font-serif) !important;
+        font-size: var(--text-2xl) !important;
+        font-weight: 700 !important;
+        line-height: var(--leading-tight) !important;
+        letter-spacing: var(--tracking-tight) !important;
+        color: var(--text-primary) !important;
+        margin: 0 0 var(--space-1) !important;
+    }
+    .page-sub {
+        font-family: var(--font-serif);
+        font-size: var(--text-md);
+        color: var(--text-muted);
+        line-height: var(--leading-normal);
+        margin: 0 0 var(--space-2);
+        max-width: 60ch;
+    }
+    .sr-only {
+        position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+        overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    }
+
+    /* Sentence case everywhere: labels, eyebrows and stat captions keep the case they are written in. */
+    .stApp [data-testid="stWidgetLabel"], .stApp [data-testid="stWidgetLabel"] p,
+    .stFileUploader label, .stSelectbox label, .stTextInput label,
+    .section-label, .export-stat-label, .arch-step-label, .gen-outcome-label,
+    .tel-label, .qa-chips-label, .timeline-step {
+        text-transform: none !important;
+        letter-spacing: normal !important;
+    }
+    .stApp [data-testid="stWidgetLabel"] p { font-size: var(--text-sm) !important; color: var(--text-primary) !important; }
+    h1.page-h1, .stMarkdown h1.page-h1 { margin-bottom: var(--space-3) !important; }
+    h1.page-h1 + .page-sub { margin-top: calc(-1 * var(--space-2)) !important; }
+
+    /* Buttons: sentence case, one size, one hierarchy -- primary fills, secondary outlines, tertiary is text. */
+    :is(.stApp, [role="dialog"]) .stButton > button,
+    :is(.stApp, [role="dialog"]) .stDownloadButton > button,
+    :is(.stApp, [role="dialog"]) .stFormSubmitButton > button {
+        text-transform: none !important;
+        letter-spacing: normal !important;
+        font-size: var(--text-sm) !important;
+        font-weight: 500 !important;
+        min-height: 2.5rem;
+        padding: var(--space-2) var(--space-3) !important;
+        border-radius: var(--radius-base) !important;
+        transition: background-color var(--duration-fast) ease, border-color var(--duration-fast) ease,
+                    color var(--duration-fast) ease, scale var(--duration-fast) ease-out !important;
+    }
+    :is(.stApp, [role="dialog"]) button[kind^="primary"] {
+        background-color: var(--accent-amber) !important;
+        color: var(--text-on-accent) !important;
+        border: 1px solid var(--accent-amber) !important;
+    }
+    :is(.stApp, [role="dialog"]) button[kind^="secondary"] {
+        background-color: transparent !important;
+        color: var(--text-primary) !important;
+        border: 1px solid var(--border-strong) !important;
+    }
+    :is(.stApp, [role="dialog"]) button[kind^="tertiary"] {
+        background-color: transparent !important;
+        color: var(--text-muted) !important;
+        border: 1px solid transparent !important;
+        padding: var(--space-1h) var(--space-2) !important;
+        min-height: 0;
+    }
+    :is(.stApp, [role="dialog"]) button[kind^="primary"] p, :is(.stApp, [role="dialog"]) button[kind^="secondary"] p, :is(.stApp, [role="dialog"]) button[kind^="tertiary"] p {
+        color: inherit !important;
+    }
+    @media (hover: hover) {
+        :is(.stApp, [role="dialog"]) button[kind^="primary"]:not(:disabled):hover {
+            background-color: var(--color-amber-400) !important;
+            opacity: 1 !important;
+        }
+        :is(.stApp, [role="dialog"]) button[kind^="secondary"]:not(:disabled):hover {
+            border-color: var(--accent-amber) !important;
+            color: var(--accent-amber) !important;
+            background-color: var(--accent-wash-1) !important;
+            opacity: 1 !important;
+        }
+        :is(.stApp, [role="dialog"]) button[kind^="tertiary"]:not(:disabled):hover {
+            color: var(--text-primary) !important;
+            background-color: var(--surface-raised) !important;
+            opacity: 1 !important;
+        }
+    }
+    @media (prefers-reduced-motion: no-preference) {
+        :is(.stApp, [role="dialog"]) button:not(:disabled):active { scale: 0.96; }
+    }
+    /* Destructive confirmations: keys start with danger_ */
+    :is(.stApp, [role="dialog"]) [class*="st-key-danger_"] button {
+        background-color: var(--color-danger) !important;
+        border-color: var(--color-danger) !important;
+        color: var(--text-on-accent) !important;
+    }
+
+    /* Docs: the docstring reads as text, not code */
+    .docs-docstring {
+        font-family: var(--font-serif);
+        font-size: var(--text-md);
+        color: var(--text-primary);
+        line-height: var(--leading-normal);
+        margin: 0 0 var(--space-2);
+    }
+
+    /* Docs: rows sit on the container's own gap; names in rows read at body size */
+    .stApp .stExpander { margin-top: 0 !important; margin-bottom: 0 !important; }
+    .stExpander summary code { font-size: var(--text-sm) !important; background: transparent !important; padding: 0 !important; }
+    .st-key-docs_overview h1, .st-key-docs_overview h2 {
+        font-size: var(--text-lg) !important;
+        padding: 0 0 var(--space-2) !important;
+    }
+    .st-key-docs_overview h3 { font-size: var(--text-md) !important; }
+    #ghost-scan-estimate.scan-estimate-body { margin: var(--space-3) 0 var(--space-1) !important; }
+
+    /* Scan: repo chip */
+    .repo-chip {
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
+        color: var(--text-primary);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-pill);
+        padding: var(--space-1h) var(--space-3);
+        white-space: nowrap;
+    }
+
+    /* Audit log: room above the table for its hover toolbar, so it never covers the filters */
+    [class*="st-key-audit_table"] { margin-top: var(--space-5) !important; }
+
+    /* Landing hero */
+    .hero { margin-top: 0 !important; max-width: 34rem; }
+    .mock-editor { margin-top: 0 !important; }
+    .mock-editor-body { overflow-x: auto; }
+    .mock-line { display: block !important; white-space: pre !important; }
+    .landing-h2 {
+        font-family: var(--font-serif) !important;
+        font-size: var(--text-xl) !important;
+        font-weight: 600 !important;
+        color: var(--text-primary) !important;
+        padding: 0 !important;
+        margin: 0 0 var(--space-3) !important;
+    }
+    .security-item h2 {
+        font-family: var(--font-mono) !important;
+        font-size: var(--text-sm) !important;
+        font-weight: 500 !important;
+        color: var(--accent-amber) !important;
+        letter-spacing: normal !important;
+        text-transform: none !important;
+        padding: 0 !important;
+        margin: 0 0 var(--space-1) !important;
+    }
+    .security-item p { font-size: var(--text-sm) !important; }
+    ol.timeline, ol.arch-pipeline { list-style: none; margin: 0; padding-left: 2rem; }
+    ol.arch-pipeline { padding-left: 0; }
+    .timeline-item { grid-template-columns: 7rem 1fr !important; padding: var(--space-3) 0 !important; }
+    .timeline-step { text-transform: none !important; letter-spacing: normal !important; font-size: var(--text-sm) !important; }
+    .process-card .built-tags { margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--border); }
+    .arch-infra-item + .arch-infra-item::before { content: "\00B7"; padding: 0 var(--space-2); color: var(--border-strong); }
+    .st-key-closing_cta { margin-top: var(--space-3); }
+
+
+    /* ================================================================
+       P1 LAYER -- stats, chat, docs list, generation steps, dialogs,
+       code colours and interaction polish. Keyed selectors only.
+       ================================================================ */
+
+    /* Shared stat row */
+    .stat-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-3) var(--space-6);
+        margin: var(--space-1) 0 var(--space-4);
+    }
+    .stat { display: flex; flex-direction: column; gap: var(--space-1); min-width: 6rem; }
+    .stat-value {
+        font-family: var(--font-mono);
+        font-size: var(--text-xl);
+        font-weight: 500;
+        line-height: var(--leading-none);
+        color: var(--text-primary);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+    .stat-label {
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        color: var(--text-muted);
+        line-height: var(--leading-snug);
+    }
+    .stat-note { margin-left: var(--space-1); color: var(--border-strong); }
+
+    /* Dialogs */
+    .dialog-body {
+        font-family: var(--font-serif);
+        font-size: var(--text-md);
+        line-height: var(--leading-normal);
+        color: var(--text-primary);
+        margin: 0 0 var(--space-3);
+    }
+    div[role="dialog"] { border: 1px solid var(--border) !important; }
+
+    /* Scan: one source card */
+    .st-key-scan_source_card { margin-top: var(--space-1); }
+    .stApp .st-key-scan_source_card:has(.scan-error-line) [data-testid="stTextInputRootElement"] {
+        border-color: var(--color-danger) !important;
+    }
+    .scan-error-line {
+        font-family: var(--font-mono);
+        font-size: var(--text-sm) !important;
+        color: var(--color-danger);
+        margin: 0 !important;
+    }
+    /* The uploader repeats the size limit and type the caption already states. */
+    .st-key-scan_file_upload [data-testid="stFileUploaderDropzoneInstructions"] { display: none !important; }
+    .st-key-scan_stats { margin-bottom: var(--space-2); }
+    .st-key-cta_generate_docs, .st-key-cta_scan_view_docs { margin-top: var(--space-2); }
+
+    /* Generation steps */
+    ol.gen-steps, .stMarkdown ol.gen-steps {
+        list-style: none;
+        padding-left: 0 !important;
+        margin-left: 0 !important;
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2) var(--space-4);
+        margin: 0 0 var(--space-2);
+        padding: 0;
+    }
+    .gen-step {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2);
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
+        color: var(--text-muted);
+        font-variant-numeric: tabular-nums;
+    }
+    .gen-step-marker {
+        width: 1.5rem; height: 1.5rem;
+        display: inline-flex; align-items: center; justify-content: center;
+        border-radius: var(--radius-pill);
+        border: 1px solid var(--border-strong);
+        font-size: var(--text-xs);
+    }
+    .gen-step-done { color: var(--text-primary); }
+    .gen-step-done .gen-step-marker { background: var(--accent-amber); border-color: var(--accent-amber); color: var(--text-on-accent); }
+    .gen-step-current { color: var(--text-primary); font-weight: 500; }
+    .gen-step-current .gen-step-marker { border-color: var(--accent-amber); color: var(--accent-amber); }
+    .stProgress [role="progressbar"] div div { background-color: var(--accent-amber) !important; }
+
+    /* Docs: file sections and definitions */
+    .docs-file-head {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        margin-bottom: var(--space-1);
+    }
+    h2.docs-file-name, .stMarkdown h2.docs-file-name {
+        font-family: var(--font-mono) !important;
+        font-size: var(--text-md) !important;
+        font-weight: 500 !important;
+        color: var(--text-primary) !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        letter-spacing: normal !important;
+    }
+    .docs-file-count {
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        color: var(--text-muted);
+        font-variant-numeric: tabular-nums;
+        margin-left: auto;
+        white-space: nowrap;
+    }
+    .docs-file-bar {
+        width: 6rem; height: 4px;
+        border-radius: var(--radius-pill);
+        background: var(--surface-raised);
+        overflow: hidden;
+        display: inline-block;
+    }
+    .docs-file-bar span { display: block; height: 100%; background: var(--accent-amber); }
+    [class*="st-key-docs_fn_"] {
+        padding: var(--space-2h) 0;
+        border-top: 1px solid var(--border-faint);
+    }
+    code.docs-sig {
+        font-family: var(--font-mono) !important;
+        font-size: var(--text-sm) !important;
+        color: var(--text-strong) !important;
+        background: transparent !important;
+        padding: 0 !important;
+    }
+    .docs-docstring { margin: 0 !important; }
+    .st-key-docs_filters { margin: var(--space-2) 0; }
+    .st-key-docs_stats { margin-bottom: var(--space-1); }
+
+    /* Q&A chat */
+    .st-key-qa_meta { margin-bottom: var(--space-2); }
+    .vector-status-bar {
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        color: var(--text-muted);
+        display: inline-flex; align-items: center; gap: var(--space-1h);
+    }
+    .vector-active-dot { color: var(--color-success); font-size: var(--text-xs); }
+    [data-testid="stChatMessage"] {
+        background: transparent !important;
+        padding: var(--space-2) 0 !important;
+        gap: var(--space-3) !important;
+    }
+    [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) [data-testid="stChatMessageContent"] {
+        font-family: var(--font-serif);
+    }
+    [data-testid="stChatMessageAvatarUser"], [data-testid="stChatMessageAvatarAssistant"],
+    [data-testid="stChatMessageAvatarCustom"] {
+        background: var(--surface-raised) !important;
+        color: var(--accent-amber) !important;
+        border: 1px solid var(--border);
+    }
+    .qa-citations { display: flex; flex-wrap: wrap; gap: var(--space-1h); margin-top: var(--space-1); }
+    .qa-citations .qa-citation-pill {
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        color: var(--accent-amber);
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-pill);
+        padding: var(--space-0h) var(--space-2h);
+        background: var(--accent-wash-1);
+    }
+    .st-key-qa_chips { margin-top: var(--space-4); }
+    [data-testid="stChatInput"] textarea { font-family: var(--font-mono) !important; }
+
+    /* Code: warm palette instead of the default blue keywords */
+    .stCode pre, .stCode code { color: var(--text-primary) !important; }
+    .stCode .token.keyword, .stCode .token.builtin, .stCode .token.boolean { color: var(--accent-amber) !important; }
+    .stCode .token.function, .stCode .token.class-name { color: var(--text-strong) !important; }
+    .stCode .token.string, .stCode .token.triple-quoted-string { color: var(--color-success) !important; }
+    .stCode .token.number { color: var(--color-amber-400) !important; }
+    .stCode .token.comment { color: var(--text-muted) !important; font-style: italic; }
+    .stCode .token.punctuation, .stCode .token.operator { color: var(--text-muted) !important; }
+    .stCode .token.decorator, .stCode .token.annotation { color: var(--color-amber-400) !important; }
+
+    /* Compact toggles (keys start with compact_): an inline disclosure, not a card */
+    [class*="st-key-compact_"] .stExpander, .stExpander[class*="st-key-compact_"],
+    [class*="st-key-compact_"] [data-testid="stExpander"] {
+        background: transparent !important;
+        border: none !important;
+        margin: var(--space-1) 0 0 !important;
+    }
+    [class*="st-key-compact_"] summary {
+        padding: var(--space-1) 0 !important;
+        font-size: var(--text-xs) !important;
+        color: var(--text-muted) !important;
+    }
+    [class*="st-key-compact_"] details { border: none !important; background: transparent !important; }
+
+    /* P2: sticky, frosted top bar. The blur sits on a pseudo-element, not on the bar,
+       so the command palette's fixed overlay is positioned against the viewport. */
+    [data-testid="stLayoutWrapper"]:has(> .st-key-topbar_wrap) {
+        position: sticky;
+        top: 0;
+        z-index: 999;
+    }
+    .st-key-topbar_wrap {
+        position: relative;
+        margin-bottom: var(--space-5);
+        border-bottom: 1px solid var(--border);
+    }
+    .st-key-topbar_wrap::before {
+        content: "";
+        position: absolute;
+        inset: calc(-1 * var(--space-4)) -100vw 0;
+        background: var(--surface-frosted);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        z-index: -1;
+    }
+    .st-key-command_palette { position: absolute !important; width: 0; height: 0; }
+    .section-h2, .stMarkdown h2.section-h2 {
+        font-family: var(--font-serif) !important;
+        font-size: var(--text-lg) !important;
+        font-weight: 600 !important;
+        padding: 0 !important;
+        margin: var(--space-2) 0 0 !important;
+    }
+
+    /* Reruns keep content readable instead of greying it out */
+    [data-stale="true"] { opacity: 1 !important; transition: none !important; }
+
+    /* Hover and press: 150ms on the surfaces people interact with */
+    [class*="st-key-docs_file_"], .st-key-scan_source_card, .ledger-row {
+        transition: border-color var(--duration-fast) ease, background-color var(--duration-fast) ease;
+    }
+    @media (hover: hover) {
+        [class*="st-key-docs_file_"]:hover, .st-key-scan_source_card:hover { border-color: var(--border-strong) !important; }
+        .ledger-row:hover { background-color: var(--surface); }
+        .stExpander summary:hover { color: var(--text-primary) !important; }
+    }
+
     </style>
-    """,
-        unsafe_allow_html=True,
+    """
     )
