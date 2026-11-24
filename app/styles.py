@@ -20,16 +20,6 @@ def inject_css() -> None:
     st.html(
         """
     <style>
-    /* Fonts load through the theme in .streamlit/config.toml. */
-
-    /* ================================================================
-       DESIGN TOKENS -- three layers.
-       1. Primitives hold the raw values and carry no meaning.
-       2. Semantic tokens say what a value is for; change these to re-theme.
-       3. Component tokens let one component be tuned without touching the rest.
-       Rules below read layers 2 and 3. A raw colour, size or duration in a
-       rule is a bug, apart from the optical nudges marked as such.
-       ================================================================ */
 
     /* === 1. PRIMITIVES === */
     :root {
@@ -54,9 +44,9 @@ def inject_css() -> None:
         --rgb-white:  255, 255, 255;
         --rgb-black:  0, 0, 0;
         --rgb-amber:  232, 179, 57;
-        --rgb-green:  76, 175, 80;
 
         /* type families */
+        --font-sans:   'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
         --font-mono:   'IBM Plex Mono', monospace;
         --font-serif:  'Fraunces', Georgia, serif;
 
@@ -99,11 +89,9 @@ def inject_css() -> None:
         /* letter spacing, in em so it scales with the text */
         --tracking-tighter: -0.03em;
         --tracking-tight:   -0.02em;
-        --tracking-snug:    -0.01em;
         --tracking-wide:    0.05em;
         --tracking-wider:   0.08em;
         --tracking-widest:  0.1em;
-        --tracking-caps:    0.12em;
 
         /* motion */
         --duration-fast:    0.15s;
@@ -145,13 +133,7 @@ def inject_css() -> None:
         /* translucent washes over the background */
         --accent-wash-1:  rgba(var(--rgb-amber), 0.05);
         --surface-frosted: rgba(var(--rgb-black), 0.72);
-        --accent-wash-2:  rgba(var(--rgb-amber), 0.06);
         --accent-wash-3:  rgba(var(--rgb-amber), 0.08);
-        --accent-wash-4:  rgba(var(--rgb-amber), 0.15);
-        --accent-line:    rgba(var(--rgb-amber), 0.2);
-        --success-wash:   rgba(var(--rgb-green), 0.05);
-        --success-line:   rgba(var(--rgb-green), 0.2);
-        --neutral-wash-1: rgba(var(--rgb-white), 0.03);
         --neutral-wash-2: rgba(var(--rgb-white), 0.08);
 
         /* focus */
@@ -167,8 +149,6 @@ def inject_css() -> None:
         --button-radius:         var(--radius-md);
         --button-font-size:      var(--text-xs);
         --button-hover-opacity:  0.88;
-        --button-danger-bg:      var(--color-danger);
-        --button-danger-fg:      var(--text-on-accent);
 
         --input-bg:            var(--surface);
         --input-fg:            var(--text-primary);
@@ -186,7 +166,7 @@ def inject_css() -> None:
     html, body, [class*="css"], .stApp, .block-container {
         background-color: var(--bg) !important;
         color:            var(--text-primary) !important;
-        font-family:      var(--font-mono) !important;
+        font-family:      var(--font-sans) !important;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
     }
@@ -202,7 +182,7 @@ def inject_css() -> None:
     .block-container {
         padding-top:    var(--space-6) !important; /* Safe, uniform top drop */
         padding-bottom: var(--space-6) !important;
-        max-width: 1040px !important;
+        max-width: 1180px !important;
     }
 
     /* -- Global rule: zero box-shadow -- */
@@ -212,35 +192,29 @@ def inject_css() -> None:
 
     /* -- Prevent IBM Plex Mono ligature substitution -- */
     [style*="IBM Plex Mono"],
-    .type-label, .swatch-name, .spacing-label, .r-label,
-    .page-subtitle, .foundation-footer, .no-shadow-note,
-    .scan-ready-pill, .landing-footer,
-    /* Session 1b mono classes */
-    .section-label, .process-index, .process-step,
-    .built-tag,
-    /* Session 2 mono classes */
-    .scan-intro, .scan-or-label,
-    .scan-error-line, .scan-summary,
-    .ledger-index, .ledger-path, .ledger-meta,
-    /* Session 3 mono classes */
-    .gen-intro, .gen-outcome-summary,
-    .gen-error-msg, .gen-outcome-label,
-    /* Session 4 mono classes */
-    .docs-clean-line, .docs-fn-name, .ai-draft-badge,
-    .docs-docstring, .docs-empty-head, .docs-empty-sub,
-    /* Session 5 mono classes */
-    .qa-turn-label, .qa-q-label, .qa-a-label,
-    .qa-citation-pill, .qa-chips-label,
-    /* Session 6a mono classes */
-    .rail-current, .rail-muted, .rail-arrow,
-    .docs-jump-link, .scan-estimate-body,
-    .code-kw, .code-str {
+.type-label,
+.swatch-name,
+.spacing-label,
+.r-label,
+.page-subtitle,
+.foundation-footer,
+.no-shadow-note,
+.built-tag,
+.scan-error-line,
+.ledger-index,
+.ledger-path,
+.ledger-meta,
+.gen-error-msg,
+.docs-docstring,
+.docs-empty-head,
+.docs-empty-sub,
+.qa-citation-pill {
         font-feature-settings: 'liga' 0, 'calt' 0 !important;
         font-variant-ligatures: none !important;
     }
 
     /* -- Hide Streamlit chrome safely -- */
-    #MainMenu, footer {
+    footer {
         visibility: hidden !important;
         height: 0 !important;
         min-height: 0 !important;
@@ -384,36 +358,6 @@ def inject_css() -> None:
         margin-top: var(--space-2);
     }
 
-    /* ================================================================
-       SESSION 1 -- Landing screen
-       ================================================================ */
-
-    .masthead-wordmark {
-        font-family: var(--font-serif);
-        font-weight: 700;
-        font-size: var(--text-xl);
-        color: var(--text-primary);
-        letter-spacing: var(--tracking-tight);
-        line-height: var(--leading-none);
-    }
-    /* SCAN READY pill -- decorative, not clickable */
-    .scan-ready-pill {
-        font-family: var(--font-mono);
-        font-weight: 500;
-        font-size: var(--text-xs);
-        letter-spacing: var(--tracking-caps);
-        color: var(--accent-amber);
-        background-color: var(--accent-wash-4);
-        border: none;
-        border-radius: var(--radius-pill);
-        padding: var(--space-1h) var(--space-3);
-        cursor: default;
-        user-select: none;
-        pointer-events: none;
-        line-height: var(--leading-none);
-        display: inline-block;
-    }
-
     /* Hero block */
     .hero {
         margin-top: var(--space-6); /* Added breathing room from the masthead */
@@ -421,8 +365,7 @@ def inject_css() -> None:
         flex-direction: column;
         justify-content: center;
         max-width: 460px;
-        padding: 0; /* Stripped to prevent double-stacking */
-    }
+        padding: 0;    }
     .hero-headline {
         font-family: var(--font-serif);
         font-weight: 700;
@@ -438,8 +381,7 @@ def inject_css() -> None:
         font-size: var(--text-md);
         color: var(--text-muted);
         line-height: var(--leading-relaxed);
-        margin-bottom: var(--space-4); /* Reduced from space-6 to pull CTA closer */
-    }
+        margin-bottom: var(--space-4);    }
 
     /* CTA button: override Streamlit default chrome (solid primary CTA) */
     .stButton > button,
@@ -484,23 +426,18 @@ def inject_css() -> None:
     .stFormSubmitButton > button:focus,
     .stFormSubmitButton > button:focus-visible,
     .stFormSubmitButton > button:active {
-        box-shadow: none !important; /* keyboard focus is drawn by the shared :focus-visible ring */
-    }
+        box-shadow: none !important;    }
 
     /* Secondary button styling (outline/ghost) */
     button[kind="secondary"],
-    .stButton > button[kind="secondary"],
-    div.element-container:has(#cta-secondary-marker-ns) + div .stButton > button,
-    div.element-container:has(#cta-secondary-marker) + div .stButton > button {
+.stButton > button[kind="secondary"] {
         background-color: transparent !important;
         color: var(--accent-amber) !important;
         border: 1px solid var(--accent-amber) !important;
     }
     @media (hover: hover) {
         button[kind="secondary"]:hover,
-        .stButton > button[kind="secondary"]:hover,
-        div.element-container:has(#cta-secondary-marker-ns) + div .stButton > button:hover,
-        div.element-container:has(#cta-secondary-marker) + div .stButton > button:hover {
+.stButton > button[kind="secondary"]:hover {
             background-color: var(--accent-wash-3) !important;
             color: var(--accent-amber) !important;
             border-color: var(--accent-amber) !important;
@@ -508,53 +445,9 @@ def inject_css() -> None:
         }
     }
     button[kind="secondary"]:active,
-    .stButton > button[kind="secondary"]:active,
-    div.element-container:has(#cta-secondary-marker-ns) + div .stButton > button:active,
-    div.element-container:has(#cta-secondary-marker) + div .stButton > button:active {
+.stButton > button[kind="secondary"]:active {
         background-color: transparent !important;
         opacity: 0.65 !important;
-    }
-
-    /* Landing footer -- kept in CSS for Session 0 foundation page; unused on landing */
-    .landing-footer {
-        font-family: var(--font-mono);
-        font-weight: 400;
-        font-size: var(--text-xs);
-        letter-spacing: var(--tracking-wider);
-        color: var(--text-muted);
-        text-align: center;
-        border-top: 1px solid var(--border);
-        padding-top: var(--space-4);
-        margin-top: var(--space-6);
-    }
-
-    /* ================================================================
-       SESSION 1b -- Below-hero sections (Why / Process / Built-with / Closing CTA)
-       ================================================================ */
-
-    /* Shared section label (mono caps, small, muted) */
-    .section-label {
-        font-family: var(--font-mono);
-        font-weight: 400;
-        font-size: var(--text-xs);
-        letter-spacing: var(--tracking-caps);
-        text-transform: uppercase;
-        color: var(--text-muted);
-        margin-top: var(--space-2) !important; /* Ensures breathing room below dividers */
-        margin-bottom: var(--space-3);
-    }
-
-    /* Section A -- Why this exists (stacked layout with optimal reading width) */
-    .why-section {
-        padding: var(--space-4) 0 0 0; /* Stripped bottom padding completely */
-    }
-    .why-body {
-        font-family: var(--font-serif);
-        font-weight: 400;
-        font-size: var(--text-md);
-        color: var(--text-muted);
-        line-height: var(--leading-relaxed);
-        margin: 0;
     }
 
     /* -- Security & Telemetry Bar -- */
@@ -565,51 +458,21 @@ def inject_css() -> None:
         padding: var(--space-5) 0;
         border-top: 1px solid var(--border);
         border-bottom: 1px solid var(--border);
-        margin: var(--space-5) 0 var(--space-2) 0; /* Aggressively reduced bottom margin */
-    }
-    .why-section {
-        margin-top: 0 !important;
-    }
+        margin: var(--space-5) 0 var(--space-2) 0;    }
 
     /* -- Cinematic Entrance Animations -- */
-    .typewriter-headline {
-        /* Revealed left to right with a clip, so the text can wrap onto as many
-           lines as the column needs. A width animation on a single unwrapped
-           line cut the sentence off wherever the column ended. */
-        white-space: normal;
-        clip-path: inset(0 100% 0 0);
-        animation: typeMainline 1.2s steps(45, end) 0.2s forwards;
-    }
-    @keyframes typeMainline {
+        @keyframes typeMainline {
         to { clip-path: inset(0 0 0 0); }
     }
     @media (max-width: 768px) {
-        /* Mobile fallback so long headlines can wrap naturally */
-        .typewriter-headline {
-            white-space: normal;
-            clip-path: none;
-            animation: fadeSlideUp 0.8s ease-out forwards;
-        }
-    }
+            }
 
-    .cascade-fade {
-        opacity: 0;
-        transform: translateY(15px);
-        animation: fadeSlideUp 0.8s ease-out forwards;
-    }
-    @keyframes fadeSlideUp {
+        @keyframes fadeSlideUp {
         to { opacity: 1; transform: translateY(0); }
     }
 
     /* Prevent Streamlit buttons from awkwardly floating before the cascade reaches them */
-    div.element-container:has(#hero-cta-marker) + div,
-    div.element-container:has(#footer-cta-marker) + div {
-        opacity: 0;
-        animation: fadeSlideUp 0.8s ease-out forwards;
-    }
-    div.element-container:has(#hero-cta-marker) + div { animation-delay: 1.3s; }
-    div.element-container:has(#footer-cta-marker) + div { animation-delay: 2.5s; }
-    .security-item h2 {
+                .security-item h2 {
         font-family: var(--font-mono) !important;
         font-size: var(--text-xs);
         color: var(--accent-amber) !important;
@@ -622,107 +485,6 @@ def inject_css() -> None:
         color: var(--text-muted);
         line-height: var(--leading-normal);
         margin: 0;
-    }
-
-    /* -- Rationale 2-Column Grid -- */
-    .rationale-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: var(--space-5);
-        margin-top: var(--space-4);
-    }
-    @media (max-width: 640px) { .rationale-grid { grid-template-columns: 1fr; } }
-    .rationale-col h3 {
-        font-family: var(--font-mono) !important;
-        font-size: var(--text-sm);
-        letter-spacing: var(--tracking-widest);
-        color: var(--text-primary) !important;
-        margin-bottom: var(--space-3);
-        border-bottom: 1px solid var(--border);
-        padding-bottom: var(--space-2);
-    }
-
-    /* -- Sleek Capabilities Grid -- */
-    .caps-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: var(--space-6);
-        margin: var(--space-6) 0 var(--space-5) 0;
-    }
-    @media (max-width: 640px) { .caps-grid { grid-template-columns: 1fr; } }
-    .caps-item {
-        background: transparent;
-        padding: var(--space-4) 0 0 0;
-        border-top: 1px solid var(--border);
-    }
-    .caps-item h4 {
-        font-family: var(--font-serif) !important;
-        font-size: var(--text-lg);
-        color: var(--text-primary) !important;
-        margin-bottom: var(--space-2);
-        letter-spacing: var(--tracking-snug);
-    }
-    .caps-item p {
-        font-family: var(--font-mono);
-        font-size: var(--text-sm);
-        color: var(--text-muted);
-        line-height: var(--leading-relaxed);
-        margin: 0;
-    }
-
-    /* Code-editor mockup in hero right column */
-    .mock-editor {
-        margin-top: var(--space-6); /* Matches the hero text margin */
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-lg);
-        overflow: hidden;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-        font-family: var(--font-mono);
-    }
-    .mock-editor-bar {
-        background-color: var(--surface-sunken);
-        border-bottom: 1px solid var(--border);
-        padding: var(--space-2h) var(--space-3);
-        display: flex;
-        align-items: center;
-        gap: var(--space-1h);
-    }
-    .mock-editor-bar .dot {
-        width: 10px; height: 10px;
-        border-radius: 50%;
-        display: inline-block;
-    }
-    .mock-editor-bar .filename {
-        margin-left: auto;
-        margin-right: auto;
-        color: var(--text-muted);
-        font-family: var(--font-mono);
-        font-size: var(--text-xs);
-    }
-    .mock-editor-body {
-        padding: var(--space-3) var(--space-4);
-    }
-    .mock-line {
-        font-family: var(--font-mono);
-        font-size: var(--text-sm);
-        line-height: var(--leading-relaxed);
-        display: flex;
-        white-space: pre;
-    }
-    .mock-editor-status {
-        border-top: 1px solid var(--border);
-        padding: var(--space-2) var(--space-4);
-        font-family: var(--font-mono);
-        font-size: var(--text-xs);
-        color: var(--accent-amber);
-    }
-    .mock-editor-lineno {
-        display: inline-block;
-        width: 1.8rem;
-        color: var(--text-muted);
-        user-select: none;
-        flex-shrink: 0;
     }
 
     /* -- CSS Typewriter Animation -- */
@@ -739,23 +501,6 @@ def inject_css() -> None:
         71%, 100% { content: "docstring drafted on this machine"; color: var(--color-success); }
     }
 
-    .anim-typewriter {
-        display: inline-block;
-        overflow: hidden;
-        white-space: nowrap;
-        border-right: 2px solid var(--accent-amber);
-        /* Waits for the 1.4s fade-in + a 0.6s dramatic pause = 2.0s delay */
-        animation: typeLine 1.5s steps(40, end) 2.0s forwards, blinkCursor 0.5s step-end infinite;
-        max-width: 0;
-        vertical-align: bottom;
-        color: var(--text-muted);
-    }
-    .anim-status::before {
-        content: "> CodeT5 loaded, drafting";
-        /* Extended the total time to 5.5s so the green success state triggers AFTER typing finishes */
-        animation: statusSwap 5.5s forwards;
-    }
-
     /* -- Timeline Hover Polish -- */
     .timeline-item {
         transition: background-color var(--duration-normal) ease, transform var(--duration-normal) ease;
@@ -764,8 +509,7 @@ def inject_css() -> None:
     }
     @media (hover: hover) {
         .timeline-item:hover {
-            background-color: var(--surface-raised); /* Subtle tactile hover */
-        }
+            background-color: var(--surface-raised);        }
     }
 
     /* Sections B+C -- Unified Process + Built-With card */
@@ -774,8 +518,7 @@ def inject_css() -> None:
         border: 1px solid var(--card-border);
         border-radius: var(--card-radius);
         padding: var(--space-5);
-        margin-top: var(--space-5); /* Dramatically reduced from 72px calc */
-    }
+        margin-top: var(--space-5);    }
     /* Vertical timeline */
     .timeline {
         position: relative;
@@ -799,8 +542,7 @@ def inject_css() -> None:
         grid-template-columns: 120px 1fr;
         gap: var(--space-5);
         align-items: center;
-        padding: var(--space-4) 0; /* Increased from space-3 to give elements room to breathe */
-    }
+        padding: var(--space-4) 0;    }
     .timeline-item::before {
         content: '';
         position: absolute;
@@ -813,19 +555,7 @@ def inject_css() -> None:
         border: 2px solid var(--accent-amber);
         background: var(--surface);
     }
-    .timeline-left {
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-0h);
-    }
-    .timeline-index {
-        font-family: var(--font-mono);
-        font-weight: 500;
-        font-size: var(--text-xs);
-        color: var(--accent-amber);
-        line-height: var(--leading-none);
-    }
-    .timeline-step {
+            .timeline-step {
         font-family: var(--font-mono);
         font-weight: 700;
         font-size: var(--text-xs);
@@ -843,19 +573,7 @@ def inject_css() -> None:
         padding-top: 0;
     }
     /* Built-with inside card */
-    .card-built-label {
-        font-family: var(--font-mono);
-        font-weight: 400;
-        font-size: var(--text-xs);
-        letter-spacing: var(--tracking-caps);
-        text-transform: uppercase;
-        color: var(--text-muted);
-        margin-top: var(--space-4); /* Reduced from space-6 */
-        padding-top: var(--space-4); /* Reduced from space-5 */
-        border-top: 1px solid var(--border);
-        margin-bottom: var(--space-3);
-    }
-    .built-tags {
+        .built-tags {
         display: flex;
         flex-wrap: wrap;
         gap: var(--space-2);
@@ -897,178 +615,9 @@ def inject_css() -> None:
         letter-spacing: normal;
     }
 
-    /* Bulletproof centering and spacing for the closing CTA button */
-    div:has(#footer-cta-marker) + div {
-        display: flex !important;
-        justify-content: center !important;
-        width: 100% !important;
-        margin-top: 0 !important; /* Zeroed out to prevent orphaned button */
-    }
-    div:has(#footer-cta-marker) + div > div,
-    div:has(#footer-cta-marker) + div .stButton {
-        display: flex !important;
-        justify-content: center !important;
-        width: 100% !important;
-    }
-
-    /* Secondary (outline) button -- Session 1b.
-       DOM-verified structure (Streamlit 1.40 on Chrome/Blink):
-       Each st.markdown / st.button renders into its own div.element-container
-       child of the same div.stVerticalBlock.
-       #cta-secondary lands inside one element-container;
-       the st.button lands in the NEXT element-container sibling.
-       Verified working selector: div:has(#cta-secondary) + div .stButton > button */
-    /* Secondary (outline) button -- using new markers */
-    div:has(#cta-secondary-marker) + div .stButton > button,
-    div:has(#cta-secondary-marker-ask) + div .stButton > button,
-    div:has(#cta-secondary-marker-ns) + div .stButton > button {
-        background-color: transparent !important;
-        color: var(--accent-amber) !important;
-        border: 1px solid var(--accent-amber) !important;
-    }
-    @media (hover: hover) {
-        div:has(#cta-secondary-marker) + div .stButton > button:hover,
-        div:has(#cta-secondary-marker-ask) + div .stButton > button:hover,
-        div:has(#cta-secondary-marker-ns) + div .stButton > button:hover {
-            background-color: var(--accent-wash-3) !important;
-            color: var(--accent-amber) !important;
-            opacity: 1 !important;
-        }
-    }
-    div:has(#cta-secondary-marker) + div .stButton > button:active,
-    div:has(#cta-secondary-marker-ask) + div .stButton > button:active,
-    div:has(#cta-secondary-marker-ns) + div .stButton > button:active {
-        background-color: transparent !important;
-        opacity: 0.65 !important;
-    }
-
-    /* Aggressively neutralize empty Streamlit containers holding our markers */
-    div.element-container:has(#cta-secondary-marker),
-    div.element-container:has(#cta-secondary-marker-ask),
-    div.element-container:has(#cta-secondary-marker-ns),
-    div.element-container:has(#cta-generate-marker),
-    div.element-container:has(#docs-action-buttons) {
-        display: none !important;
-        margin-bottom: 0 !important;
-        height: 0 !important;
-        min-height: 0 !important;
-        width: 0 !important;
-    }
-
-    /* ================================================================
-       SESSION 2 -- Scan screen
-       ================================================================ */
-
     /* -- Scan Screen UX Polish -- */
-    .scan-parameters {
-        font-family: var(--font-mono);
-        font-weight: 400;
-        font-size: var(--text-xs);
-        color: var(--text-primary);
-        letter-spacing: var(--tracking-wide);
-        margin-top: -12px;
-        margin-bottom: var(--space-5);
-        background: var(--neutral-wash-1); /* Subtle dark tint */
-        border-left: 2px solid var(--accent-amber);
-        padding: var(--space-2) var(--space-2h);
-        border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-    }
 
-    div.element-container:has(.scan-microcopy) {
-        margin-top: -12px !important;
-        margin-bottom: var(--space-4) !important;
-    }
-    .scan-microcopy {
-        font-family: var(--font-mono);
-        font-size: var(--text-xs);
-        color: var(--text-muted);
-        background: var(--accent-wash-1); /* Amber tint */
-        border: 1px solid var(--accent-line);
-        padding: var(--space-2) var(--space-2h);
-        border-radius: var(--radius-sm);
-        display: flex;
-        align-items: flex-start;
-        gap: var(--space-2);
-    }
-
-    .scan-preview-row {
-        display: flex;
-        align-items: center;
-        gap: var(--space-3);
-        flex-wrap: wrap;
-        margin-top: var(--space-2); /* GAP HALVED HERE */
-        margin-bottom: var(--space-4);
-    }
-    .scan-preview-step {
-        font-family: var(--font-mono);
-        font-weight: 500;
-        font-size: var(--text-xs);
-        letter-spacing: var(--tracking-wide);
-        color: var(--text-muted);
-        background: transparent; /* Stripped heavy boxes */
-        padding: 0;
-        border: none;
-    }
-    .scan-preview-arrow {
-        color: var(--border-strong);
-        font-size: var(--text-sm);
-    }
-
-    div.element-container:has(.scan-security-tag) {
-        margin-top: -8px !important;
-    }
-    .scan-security-tag {
-        font-family: var(--font-mono);
-        font-size: var(--text-xs);
-        color: var(--text-muted);
-        display: flex;
-        align-items: center;
-        gap: var(--space-2);
-        background: var(--success-wash); /* Green tint */
-        border: 1px solid var(--success-line);
-        padding: var(--space-2) var(--space-2h);
-        border-radius: var(--radius-sm);
-    }
-
-    .scan-input-section {
-        padding: var(--space-5) 0 var(--space-4);
-    }
-    .scan-intro {
-        font-family: var(--font-serif);
-        font-weight: 400;
-        font-size: var(--text-md);
-        color: var(--text-muted);
-        line-height: var(--leading-relaxed);
-        margin: 0 0 var(--space-4) 0; /* Reduced from space-5 */
-    }
-    .scan-or-divider {
-        display: flex;
-        align-items: center;
-        gap: var(--space-3);
-        margin: var(--space-4) 0;
-    }
-    .scan-or-line {
-        flex: 1;
-        height: 1px;
-        background: var(--border);
-    }
-    .scan-or-label {
-        font-family: var(--font-mono);
-        font-weight: 400;
-        font-size: var(--text-xs);
-        letter-spacing: var(--tracking-caps);
-        color: var(--text-muted);
-        flex-shrink: 0;
-    }
-    .scan-helper {
-        font-family: var(--font-serif) !important;
-        font-weight: 400;
-        font-size: var(--text-md);
-        line-height: var(--leading-relaxed);
-        color: var(--text-muted);
-        margin-top: 0 !important; /* Tuck tightly against the button */
-    }
-    .scan-error-line {
+                            .scan-error-line {
         font-family: var(--font-mono);
         font-weight: 400;
         font-size: var(--text-sm);
@@ -1077,16 +626,8 @@ def inject_css() -> None:
     }
     .scan-results-section {
         padding: 0 !important; /* Strip the 48px var(--space-6) top padding */
-        margin-top: var(--space-4) !important; /* Reduced from 32px */
-    }
-    .scan-summary {
-        font-family: var(--font-mono);
-        font-weight: 400;
-        font-size: var(--text-sm);
-        color: var(--text-muted);
-        margin-bottom: var(--space-5) !important;
-    }
-    /* Direct row hover with a visible opacity */
+        margin-top: var(--space-4) !important;    }
+        /* Direct row hover with a visible opacity */
     .ledger-row {
         border-top: 1px solid var(--border);
         display: grid;
@@ -1142,10 +683,7 @@ def inject_css() -> None:
         text-align: right;
     }
     /* Tightly group the primary CTA with the estimate section */
-    div:has(#cta-generate-marker) + div {
-        margin-top: 0 !important; /* Rely entirely on Streamlit's neutralized natural gap */
-    }
-    .stFileUploader label,
+        .stFileUploader label,
     .stSelectbox label,
     .stTextInput label {
         font-family: var(--font-mono) !important;
@@ -1224,101 +762,6 @@ def inject_css() -> None:
     .pip-amber { background-color: var(--color-warning); }
     .pip-red { background-color: var(--color-danger); }
 
-    .system-note {
-        font-family: var(--font-mono);
-        font-size: var(--text-xs);
-        color: var(--text-muted);
-        margin-top: var(--space-4);
-        margin-bottom: var(--space-4);
-        padding-top: var(--space-3);
-        border-top: 1px dashed var(--border-subtle);
-    }
-
-    /* ================================================================
-       SESSION 3 -- Generation / progress screen
-       ================================================================ */
-
-    /* -- Generation Telemetry Grid -- */
-    .telemetry-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: var(--space-3);
-        margin: var(--space-4) 0 var(--space-4) 0;
-        border: 1px solid var(--card-border);
-        border-radius: var(--card-radius);
-        background: var(--card-bg);
-        padding: var(--space-3) var(--space-4);
-    }
-    @media (max-width: 640px) {
-        .telemetry-grid { grid-template-columns: 1fr; gap: var(--space-4); }
-    }
-    .telemetry-col {
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-1h);
-    }
-    .tel-label {
-        font-family: var(--font-mono);
-        font-size: var(--text-xs);
-        letter-spacing: var(--tracking-caps);
-        text-transform: uppercase;
-        color: var(--text-muted);
-    }
-    .tel-value {
-        font-family: var(--font-mono);
-        font-weight: 500;
-        font-size: var(--text-xs);
-        color: var(--accent-amber);
-    }
-
-    /* Fraunces intro line (same treatment as .scan-intro / .why-body) */
-    .gen-intro {
-        font-family: var(--font-serif);
-        font-weight: 400;
-        font-size: var(--text-md);
-        color: var(--text-muted);
-        line-height: var(--leading-relaxed);
-        margin: 0 0 var(--space-2) 0; /* Set to space-2 for perfect symmetry */
-    }
-
-    /* Outcome section wrapper */
-    div.element-container:has(.gen-outcome-section) {
-        margin-top: var(--space-4) !important; /* Increased breathing room from the terminal log */
-    }
-    .gen-outcome-section {
-        padding: 0 !important;
-        margin-top: 0 !important;
-    }
-
-    /* DOCUMENTATION READY label */
-    .gen-outcome-label {
-        font-family: var(--font-mono);
-        font-weight: 400;
-        font-size: var(--text-xs);
-        letter-spacing: var(--tracking-caps);
-        text-transform: uppercase;
-        color: var(--text-muted);
-        margin-bottom: var(--space-2);
-    }
-
-    /* Summary / file-count line */
-    .gen-outcome-summary {
-        font-family: var(--font-mono);
-        font-weight: 400;
-        font-size: var(--text-sm);
-        color: var(--text-muted);
-        margin-bottom: var(--space-3);
-    }
-
-    /* -- Generation Outcome Sub-summary -- */
-    .gen-outcome-sub {
-        font-family: var(--font-mono);
-        font-size: var(--text-xs);
-        color: var(--text-muted);
-        margin-top: var(--space-2);
-        line-height: var(--leading-normal);
-    }
-
     /* Rate-limit error message */
     .gen-error-msg {
         font-family: var(--font-mono);
@@ -1328,24 +771,6 @@ def inject_css() -> None:
         margin-bottom: var(--space-3);
         line-height: var(--leading-normal);
     }
-
-    /* Aggressively neutralize empty Streamlit containers for generation markers */
-    div.element-container:has(#cta-view-docs-marker),
-    div.element-container:has(#cta-try-again-marker) {
-        margin-bottom: -1rem !important; /* Offset Streamlit's injected 1rem gap */
-        height: 0 !important;
-        min-height: 0 !important;
-    }
-
-    /* Generation CTA grouping */
-    div:has(#cta-view-docs-marker) + div,
-    div:has(#cta-try-again-marker) + div {
-        margin-top: var(--space-3) !important; /* Reduced from 24px */
-    }
-
-    /* ================================================================
-       SESSION 4 -- Documentation Viewer screen
-       ================================================================ */
 
     /* Empty-state heading and subline */
     .docs-empty-head {
@@ -1363,123 +788,6 @@ def inject_css() -> None:
         margin-bottom: var(--space-5);
     }
 
-    /* All-clean state message */
-    .docs-all-clean {
-        font-family: var(--font-mono);
-        font-size: var(--text-sm);
-        color: var(--text-muted);
-        margin-top: var(--space-4); /* Added breathing room from preceding blocks */
-        margin-bottom: var(--space-4);
-    }
-
-    /* File section header row */
-    .docs-file-header {
-        padding: var(--space-4) 0 var(--space-2) 0; /* Reduced padding */
-        border: none !important;
-        margin-top: 0 !important; /* Squashed */
-    }
-
-    /* Remove clean line borders */
-    .docs-clean-line {
-        font-family: var(--font-mono);
-        font-weight: 400;
-        font-size: var(--text-sm);
-        color: var(--text-muted);
-        padding: var(--space-2) 0; /* Reduced padding */
-        border: none !important;
-    }
-    .docs-clean-line:last-of-type {
-        border: none !important;
-    }
-    .docs-file-path {
-        font-family: var(--font-mono);
-        font-weight: 500;
-        font-size: var(--text-sm);
-        color: var(--accent-amber);
-        letter-spacing: var(--tracking-wide);
-        margin-bottom: var(--space-2);
-    }
-
-    /* Module overview paragraph */
-    .docs-overview {
-        font-family: var(--font-serif);
-        font-weight: 400;
-        font-size: var(--text-md);
-        color: var(--text-muted);
-        line-height: var(--leading-relaxed);
-        margin: 0 0 var(--space-5) 0;
-        overflow: hidden;
-    }
-
-    /* Fixed Drop Cap typography */
-    .docs-overview.drop-cap::first-letter {
-        font-family: var(--font-serif);
-        font-weight: 700;
-        font-size: 3.5em !important;
-        line-height: 0.8 !important;
-        margin-right: var(--space-2) !important;
-        margin-top: var(--space-1) !important;
-        float: left !important;
-        color: var(--text-primary);
-    }
-
-    /* Remove function block dividers and embrace whitespace */
-    .docs-fn-block {
-        padding: 0 0 var(--space-3) 0 !important; /* Reduced padding */
-        border: none !important;
-        margin-bottom: var(--space-4) !important; /* Reduced margin */
-    }
-    .docs-fn-block:last-child {
-        border-bottom: none !important;
-        margin-bottom: var(--space-3) !important; /* Reduced margin */
-    }
-
-    /* Function name row: name + ai draft badge inline */
-    .docs-fn-name-row {
-        display: flex;
-        align-items: center;
-        gap: var(--space-2);
-        margin-bottom: var(--space-3);
-        flex-wrap: wrap;
-    }
-    .docs-fn-name {
-        font-family: var(--font-mono);
-        font-weight: 500;
-        font-size: var(--text-sm);
-        color: var(--text-primary);
-        line-height: var(--leading-none);
-    }
-
-    .ai-draft-badge {
-        font-family: var(--font-mono);
-        font-weight: 500;
-        font-size: var(--text-xs);
-        letter-spacing: var(--tracking-widest);
-        color: var(--accent-amber);
-        border: 1px solid var(--accent-amber);
-        border-radius: var(--radius-pill);
-        padding: var(--space-0h) var(--space-2h) !important; /* Increased horizontal padding */
-        cursor: default;
-        user-select: none;
-        pointer-events: none;
-        line-height: var(--leading-none);
-        display: inline-block;
-        vertical-align: middle;
-    }
-
-    /* Two-column body: docstring (left) | source (right) */
-    .docs-fn-cols {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: var(--space-4);
-        align-items: start;
-    }
-    @media (max-width: 640px) {
-        .docs-fn-cols {
-            grid-template-columns: 1fr;
-        }
-    }
-
     /* Docstring column */
     .docs-docstring {
         font-family: var(--font-mono);
@@ -1488,58 +796,6 @@ def inject_css() -> None:
         color: var(--text-muted);
         line-height: var(--leading-relaxed);
     }
-
-    /* Premium structured code blocks - Bypassing Streamlit's native pre styles */
-    .docs-source-pre {
-        background: var(--surface-code) !important;
-        border: 1px solid var(--border-faint) !important;
-        border-radius: var(--radius-base) !important;
-        padding: var(--space-3) !important;
-        margin: 0 !important;
-        font-family: var(--font-mono) !important;
-        font-size: var(--text-xs) !important;
-        color: var(--text-muted) !important;
-        line-height: var(--leading-relaxed) !important;
-        white-space: pre-wrap !important;
-        overflow-wrap: anywhere !important;
-        overflow: hidden !important;
-    }
-
-    /* Divider before download button */
-    .docs-footer-hairline {
-        border: none;
-        border-top: 1px solid var(--border);
-        margin: var(--space-5) 0 var(--space-4) 0;
-    }
-
-    /* Download + back button wrapper */
-    .docs-cta-wrap {
-        padding: var(--space-2) 0;
-        margin-top: var(--space-3) !important; /* Squeezed to prevent orphaned buttons */
-    }
-
-    /* -- Docs Screen Polish -- */
-    .module-telemetry {
-        font-family: var(--font-mono);
-        font-size: var(--text-xs);
-        color: var(--text-muted);
-        letter-spacing: var(--tracking-wide);
-        border-bottom: 1px solid var(--border);
-        padding-bottom: var(--space-3);
-        margin-bottom: var(--space-4);
-        margin-top: -8px; /* Tucks it closer to the file path */
-    }
-    .docs-download-context {
-        font-family: var(--font-mono);
-        font-size: var(--text-xs);
-        color: var(--text-muted);
-        text-align: center;
-        margin-bottom: var(--space-3);
-    }
-
-    /* ================================================================
-       SESSION 5 -- Q&A screen
-       ================================================================ */
 
     /* -- Q&A Screen Polish -- */
     .vector-status-bar {
@@ -1560,141 +816,6 @@ def inject_css() -> None:
         font-size: var(--text-sm);
         line-height: var(--leading-none);
     }
-    .qa-disclaimer {
-        font-family: var(--font-mono);
-        font-size: var(--text-xs);
-        color: var(--text-muted);
-        text-align: center;
-        margin-top: var(--space-2);
-    }
-    div.element-container:has(.qa-disclaimer) {
-        margin-top: -1.2rem !important; /* Pulls disclaimer tightly under the input form */
-    }
-
-    /* Intro line (shown only when qa_chat_history is empty) */
-    .qa-intro {
-        font-family: var(--font-serif);
-        font-weight: 400;
-        font-size: var(--text-md);
-        color: var(--text-muted);
-        line-height: var(--leading-relaxed);
-        margin: 0 0 var(--space-4) 0; /* Reduced from space-5 */
-    }
-
-    /* Example questions label */
-    .qa-chips-label {
-        font-family: var(--font-mono);
-        font-weight: 400;
-        font-size: var(--text-xs);
-        letter-spacing: var(--tracking-caps);
-        text-transform: uppercase;
-        color: var(--text-muted);
-        margin-bottom: var(--space-3);
-    }
-
-    /* Update chip button styles for native columns */
-    div:has(.qa-chip-marker) + div .stButton > button {
-        background-color: var(--surface) !important;
-        color: var(--text-primary) !important;
-        border: 1px solid var(--border) !important;
-        border-radius: var(--radius-lg) !important;
-        font-family: var(--font-serif) !important;
-        font-weight: 400 !important;
-        font-size: var(--text-sm) !important; /* Slightly smaller for a chip feel */
-        padding: var(--space-2) var(--space-3) !important; /* Sleek vertical padding */
-        width: 100% !important;
-        height: auto !important; /* Let height shrink to fit */
-        line-height: var(--leading-snug) !important;
-        white-space: normal !important;
-        text-transform: none !important; /* a suggested question reads as a sentence */
-        text-align: left !important; /* Force text to the left */
-        justify-content: flex-start !important; /* Force flex children to the left */
-        transition: border-color var(--duration-fast) ease, background-color var(--duration-fast) ease !important;
-    }
-    @media (hover: hover) {
-        div:has(.qa-chip-marker) + div .stButton > button:hover {
-            border-color: var(--accent-amber) !important;
-            background-color: var(--accent-wash-2) !important;
-            color: var(--accent-amber) !important;
-        }
-    }
-
-    /* Hide the markers */
-    div.element-container:has(#qa-suggestions-container),
-    div.element-container:has(.qa-chip-marker) {
-        display: none !important;
-        margin-bottom: 0 !important;
-        height: 0 !important;
-    }
-
-    /* Transcript container */
-    .qa-transcript {
-        margin-bottom: var(--space-5);
-    }
-
-    /* Editorial turn with hairline divider */
-    .qa-turn {
-        border-top: 1px solid var(--border);
-        padding: var(--space-4) 0;
-    }
-    .qa-turn:last-child {
-        border-bottom: 1px solid var(--border);
-        margin-bottom: var(--space-5);
-    }
-
-    /* Q row: amber mono "Q" label + Fraunces question */
-    .qa-q-row {
-        display: grid;
-        grid-template-columns: 2rem 1fr;
-        gap: var(--space-3);
-        align-items: baseline;
-        margin-bottom: var(--space-3);
-    }
-
-    /* A row: muted mono "A" label + Fraunces answer body */
-    .qa-a-row {
-        display: grid;
-        grid-template-columns: 2rem 1fr;
-        gap: var(--space-3);
-        align-items: baseline;
-    }
-
-    .qa-turn-label {
-        font-family: var(--font-mono);
-        font-weight: 500;
-        font-size: var(--text-sm);
-        line-height: var(--leading-none);
-    }
-    .qa-q-label {
-        color: var(--accent-amber);
-    }
-    .qa-a-label {
-        color: var(--text-muted);
-    }
-    .qa-q-text {
-        font-family: var(--font-serif);
-        font-weight: 700;
-        font-size: var(--text-lg);
-        color: var(--text-primary);
-        line-height: var(--leading-snug);
-        letter-spacing: var(--tracking-snug);
-    }
-    .qa-a-body {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: var(--space-2);
-    }
-    .qa-a-text {
-        font-family: var(--font-serif);
-        font-weight: 400;
-        font-size: var(--text-md);
-        color: var(--text-primary);
-        line-height: var(--leading-relaxed);
-    }
-    .qa-a-fallback {
-        color: var(--text-muted) !important;
-    }
 
     /* Citation pill -- amber outline mono pill */
     .qa-citation-pill {
@@ -1714,28 +835,7 @@ def inject_css() -> None:
         margin-top: var(--space-1);
     }
 
-    /* Ask row container */
-    div.element-container:has(.qa-ask-wrap) {
-        margin-top: -1rem !important; /* Pull up to the suggestion chips */
-    }
-    .qa-ask-wrap {
-        padding: 0 !important;
-    }
-
     /* Streamlit Form border reset */
-    .st-key-enterprise_sso_form {
-        border: none !important;
-        padding: 0 !important;
-    }
-
-    /* Q&A New Scan button container */
-    div.element-container:has(.qa-new-scan-wrap) {
-        margin-top: -1rem !important; /* Neutralize Streamlit's native gap */
-    }
-    .qa-new-scan-wrap {
-        padding: 0 !important;
-        margin-top: -1.5rem !important; /* Safely pull the button upward */
-    }
 
     /* File uploader Browse files button styling override */
     .st-key-scan_file_upload button {
@@ -1758,10 +858,6 @@ def inject_css() -> None:
         }
     }
 
-    /* ================================================================
-       SESSION 6a -- Nav rail, Jump list, Estimates, Syntax highlighting
-       ================================================================ */
-
     /* Expander styling in Scan screen */
     .stExpander {
         background-color: var(--card-bg) !important;
@@ -1779,8 +875,6 @@ def inject_css() -> None:
         font-weight: 500 !important;
         letter-spacing: var(--tracking-wider) !important;
         color: var(--text-muted) !important;
-        /* No text-transform: titles contain function and class names, and
-           get_domain_name is not GET_DOMAIN_NAME. Fixed labels are written in capitals. */
     }
     @media (hover: hover) {
         .stExpander summary:hover {
@@ -1789,18 +883,7 @@ def inject_css() -> None:
     }
 
     /* Scan pre-flight estimate */
-    .scan-estimate-section {
-        margin-top: var(--space-4) !important; /* Reduced from 32px */
-        margin-bottom: 0 !important;
-    }
-    .scan-estimate-body {
-        font-family: var(--font-mono);
-        font-weight: 400;
-        font-size: var(--text-sm);
-        color: var(--text-muted);
-        margin: 0;
-    }
-    .scan-estimate-clean {
+            .scan-estimate-clean {
         font-family: var(--font-serif);
         font-weight: 400;
         font-size: var(--text-md);
@@ -1809,110 +892,11 @@ def inject_css() -> None:
         margin: var(--space-4) 0 var(--space-2) 0;
     }
 
-    div.element-container:has(.docs-jump-section) {
-        margin-bottom: -1rem !important; /* Pull up the file headers below it */
-    }
-    /* Docs Jump list - Sleek Pill Redesign */
-    .docs-jump-section {
-        padding: var(--space-2) 0 var(--space-4) 0;
-        border-top: none !important;
-        margin-bottom: 0 !important;
-    }
-    /* Hide the redundant text label to clean up the UI */
-    .docs-jump-section .section-label,
-    .docs-jump-section p {
-        display: none !important;
-    }
-    .docs-jump-links {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--space-2); /* Tighter gap for pills */
-    }
-    .docs-jump-link {
-        font-family: var(--font-mono);
-        font-weight: 400;
-        font-size: var(--text-xs);
-        color: var(--text-primary) !important;
-        text-decoration: none !important; /* Remove underline */
-        background-color: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-md); /* Pill shape */
-        padding: var(--space-1h) var(--space-2h);
-        transition: border-color var(--duration-fast) ease, color var(--duration-fast) ease, background-color var(--duration-fast) ease;
-    }
-    @media (hover: hover) {
-        .docs-jump-link:hover {
-            border-color: var(--accent-amber);
-            color: var(--accent-amber) !important;
-            background-color: var(--accent-wash-1);
-        }
-    }
-
-    /* Syntax highlighting */
-    .code-kw {
-        color: var(--accent-amber);
-        font-weight: 500;
-    }
-    .code-str {
-        color: var(--text-muted);
-    }
-
-
-    /* ================================================================
-       SESSION 7 -- Export screen
-       ================================================================ */
-
-    /* Export stats grid -- 3-column flex row */
-    .export-stats-grid {
-        display: flex;
-        gap: var(--space-5);
-        flex-wrap: wrap;
-        margin: var(--space-4) 0 var(--space-5) 0;
-        border-top: 1px solid var(--border);
-        padding-top: var(--space-4);
-    }
-    .export-stat {
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-1);
-        min-width: 120px;
-    }
-    .export-stat-value {
-        font-family: var(--font-serif);
-        font-weight: 700;
-        font-size: var(--text-xl) !important; /* Reduced from 2rem */
-        color: var(--accent-amber);
-        letter-spacing: var(--tracking-tight);
-        line-height: var(--leading-none);
-    }
-    .export-stat-label {
-        font-family: var(--font-mono);
-        font-weight: 400;
-        font-size: var(--text-xs);
-        letter-spacing: var(--tracking-caps);
-        text-transform: uppercase;
-        color: var(--text-muted);
-    }
-    .export-cta-wrap {
-        padding: var(--space-2) 0 var(--space-6) 0;
-        border-top: 1px solid var(--border);
-    }
-
     /* ================================================================
        SESSION 7 -- Architecture screen
        ================================================================ */
 
-    .arch-heading {
-        font-family: var(--font-serif);
-        font-weight: 600;
-        font-size: var(--text-xl);
-        color: var(--text-primary);
-        line-height: var(--leading-snug);
-        letter-spacing: var(--tracking-tight);
-        margin: 0 0 var(--space-5) 0; /* Reduced from space-6 */
-        max-width: 540px;
-    }
-    .arch-pipeline {
+        .arch-pipeline {
         border-top: 1px solid var(--border);
     }
     .arch-step {
@@ -1921,8 +905,7 @@ def inject_css() -> None:
         gap: var(--space-5);
         padding: var(--space-4) 0 !important; /* Reduced from 32px for tighter rows */
         border-bottom: 1px solid var(--border-subtle) !important;
-        align-items: start !important; /* Prevent text shifting */
-    }
+        align-items: start !important;    }
     .arch-step-label {
         font-family: var(--font-mono);
         font-weight: 500;
@@ -1939,7 +922,6 @@ def inject_css() -> None:
         font-size: var(--text-base);
         color: var(--text-muted);
         line-height: var(--leading-relaxed);
-        /* max-width removed to allow full horizontal span */
     }
 
     /* -- Architecture Screen Polish -- */
@@ -1965,10 +947,8 @@ def inject_css() -> None:
     }
 
     /* Ligature-off for new Session 7 mono classes */
-    .export-stat-label,
     .arch-step-label,
-    .archive-manifest,
-    .session-disclaimer {
+.archive-manifest {
         font-feature-settings: 'liga' 0, 'calt' 0 !important;
         font-variant-ligatures: none !important;
     }
@@ -1988,14 +968,7 @@ def inject_css() -> None:
         white-space: pre; /* Preserves the file tree spacing perfectly */
         overflow-x: auto;
     }
-    .session-disclaimer {
-        font-family: var(--font-mono);
-        font-size: var(--text-xs);
-        color: var(--text-muted);
-        margin-top: var(--space-4);
-        text-align: left;
-    }
-    /* -- File Uploader Sleek Redesign -- */
+        /* -- File Uploader Sleek Redesign -- */
     .st-key-scan_file_upload section {
         background-color: var(--surface-sunken) !important;
         border: 1px dashed var(--border-strong) !important;
@@ -2026,10 +999,6 @@ def inject_css() -> None:
         letter-spacing: var(--tracking-wide) !important;
     }
 
-    /* ================================================================
-       ACCESSIBILITY -- focus, disabled state, reduced motion
-       ================================================================ */
-
     /* One visible keyboard-focus ring on every control. The :not(#_) pair raises
        specificity above the nav-rail and marker rules, which reset outlines.
        Text inputs are left out: their wrapper already turns amber on focus. */
@@ -2058,24 +1027,7 @@ def inject_css() -> None:
             transition-duration: 0.01ms !important;
             scroll-behavior: auto !important;
         }
-        .typewriter-headline {
-            clip-path: none !important;
-        }
-        .cascade-fade,
-        div.element-container:has(#hero-cta-marker) + div,
-        div.element-container:has(#footer-cta-marker) + div {
-            opacity: 1 !important;
-            transform: none !important;
-        }
-        .anim-typewriter {
-            max-width: 100% !important;
-            border-right-color: transparent !important;
-        }
-    }
-
-    /* ================================================================
-       INTERFACE REVIEW -- rules added from the rendered audit
-       ================================================================ */
+                            }
 
     /* Streamlit adds a 16px "link to heading" control to every heading. It is below
        the 24px target minimum and adds a tab stop per heading; the app has no use for it. */
@@ -2091,35 +1043,17 @@ def inject_css() -> None:
     }
 
     /* Figures that sit in columns or change between runs keep one width per digit. */
-    .export-stat-value,
     .ledger-index,
-    .ledger-meta-missing,
-    .ledger-meta-clean,
-
-    /* Short headings break into even lines; paragraphs avoid a lone last word. */
-    .hero-headline,
-    .arch-heading,
-    .closing-label,
-    .qa-q-text {
+.ledger-meta-missing,
+.ledger-meta-clean,
+.hero-headline,
+.closing-label {
         text-wrap: balance;
     }
     .hero-subhead,
-    .why-body,
-    .timeline-desc,
-    .caps-item p,
-    .arch-step-body,
-    .qa-a-text {
+.timeline-desc,
+.arch-step-body {
         text-wrap: pretty;
-    }
-
-    /* The button that confirms a deletion uses the danger colour, not the brand accent. */
-    div.element-container:has(.danger-marker) + div.element-container .stButton > button {
-        background-color: var(--button-danger-bg) !important;
-        color: var(--button-danger-fg) !important;
-        border: none !important;
-    }
-    div.element-container:has(.danger-marker) {
-        display: none !important;
     }
 
     /* iOS Safari zooms the page when a focused input is under 16px. */
@@ -2147,11 +1081,6 @@ def inject_css() -> None:
         font-family: var(--font-mono) !important;
     }
 
-    /* ================================================================
-       P0 LAYER -- app shell, top bar, headings, button hierarchy.
-       Later than every rule it overrides; keyed (.st-key-*) selectors only.
-       ================================================================ */
-
     /* Streamlit's own header bar: the app draws its own. */
     header[data-testid="stHeader"] { display: none !important; }
     /* The scroll reset runs on screen changes only; its wrapper must not add a flex gap above the page. */
@@ -2159,42 +1088,6 @@ def inject_css() -> None:
     [data-testid="stLayoutWrapper"]:has(> .st-key-scroll_reset) { display: none !important; }
     [data-testid="stMainBlockContainer"], .block-container {
         padding-top: var(--space-4) !important;
-    }
-
-    .rail-current, .rail-muted, .st-key-topbar_steps button p {
-        font-family: var(--font-mono) !important;
-        font-size: var(--text-sm) !important;
-        line-height: var(--leading-none) !important;
-        white-space: nowrap;
-    }
-    .rail-current {
-        color: var(--text-primary);
-        font-weight: 500;
-        display: inline-block;
-        padding: var(--space-1h) var(--space-2);
-        border-radius: var(--radius-sm);
-        background: var(--surface-raised);
-        box-shadow: inset 0 -2px 0 var(--accent-amber) !important;
-    }
-    .rail-muted {
-        color: var(--text-muted);
-        opacity: var(--opacity-disabled);
-        display: inline-block;
-        padding: var(--space-1h) var(--space-2);
-        cursor: default;
-        user-select: none;
-    }
-    .rail-arrow {
-        color: var(--border-strong);
-        font-family: var(--font-mono);
-        font-size: var(--text-sm);
-        user-select: none;
-    }
-    .topbar-user {
-        font-family: var(--font-mono);
-        font-size: var(--text-sm);
-        color: var(--text-muted);
-        padding-right: var(--space-1);
     }
 
     /* Page headings: the screen name is the h1 */
@@ -2226,10 +1119,13 @@ def inject_css() -> None:
     }
 
     /* Sentence case everywhere: labels, eyebrows and stat captions keep the case they are written in. */
-    .stApp [data-testid="stWidgetLabel"], .stApp [data-testid="stWidgetLabel"] p,
-    .stFileUploader label, .stSelectbox label, .stTextInput label,
-    .section-label, .export-stat-label, .arch-step-label, .gen-outcome-label,
-    .tel-label, .qa-chips-label, .timeline-step {
+    .stApp [data-testid="stWidgetLabel"],
+.stApp [data-testid="stWidgetLabel"] p,
+.stFileUploader label,
+.stSelectbox label,
+.stTextInput label,
+.arch-step-label,
+.timeline-step {
         text-transform: none !important;
         letter-spacing: normal !important;
     }
@@ -2315,7 +1211,6 @@ def inject_css() -> None:
         padding: 0 0 var(--space-2) !important;
     }
     .st-key-docs_overview h3 { font-size: var(--text-md) !important; }
-    #ghost-scan-estimate.scan-estimate-body { margin: var(--space-3) 0 var(--space-1) !important; }
 
     /* Scan: repo chip */
     .repo-chip {
@@ -2334,10 +1229,7 @@ def inject_css() -> None:
 
     /* Landing hero */
     .hero { margin-top: 0 !important; max-width: 34rem; }
-    .mock-editor { margin-top: 0 !important; }
-    .mock-editor-body { overflow-x: auto; }
-    .mock-line { display: block !important; white-space: pre !important; }
-    .landing-h2 {
+                .landing-h2 {
         font-family: var(--font-serif) !important;
         font-size: var(--text-xl) !important;
         font-weight: 600 !important;
@@ -2363,12 +1255,6 @@ def inject_css() -> None:
     .process-card .built-tags { margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--border); }
     .arch-infra-item + .arch-infra-item::before { content: "\00B7"; padding: 0 var(--space-2); color: var(--border-strong); }
     .st-key-closing_cta { margin-top: var(--space-3); }
-
-
-    /* ================================================================
-       P1 LAYER -- stats, chat, docs list, generation steps, dialogs,
-       code colours and interaction polish. Keyed selectors only.
-       ================================================================ */
 
     /* Shared stat row */
     .stat-row {
@@ -2604,6 +1490,45 @@ def inject_css() -> None:
         .stExpander summary:hover { color: var(--text-primary) !important; }
     }
 
-    </style>
+
+    /* ================================================================
+       FINAL LAYER -- type roles, skeletons.
+       Inter carries interface text and prose; Fraunces the display headings;
+       IBM Plex Mono only code, signatures, file paths and tabular figures.
+       ================================================================ */
+    /* Text elements only: spans and divs inherit, and Streamlit's icon spans keep their own font. */
+    .stApp :is(p, li, label, button, input, textarea, select, summary, td, th) {
+        font-family: var(--font-sans) !important;
+    }
+    .stApp :is(h1, h2, h3, h4, h5, h6):not(.docs-file-name):not(.security-item h2),
+    .stApp :is(.hero-headline, .page-h1, .landing-h2, .section-h2, .closing-label) {
+        font-family: var(--font-serif) !important;
+    }
+    .stApp :is(code, pre, kbd, samp, .docs-sig, .repo-chip, .ledger-path, .ledger-index, .ledger-meta-missing,
+               .ledger-meta-clean, .docs-file-name, .docs-file-count, .stat-value, .archive-manifest,
+               .vector-status-bar, .gen-step-marker, .swatch-name, .type-label, .spacing-label, .r-label),
+    .stApp :is(pre, code) * {
+        font-family: var(--font-mono) !important;
+    }
+    .stApp .security-item h2 { font-family: var(--font-sans) !important; font-weight: 600 !important; }
+    .page-sub, .hero-subhead, .timeline-desc, .arch-step-body, .dialog-body,
+    .stat-label, .timeline-step, .arch-step-label, .scan-error-line, .security-item p { font-family: var(--font-sans) !important; }
+
+    .skeleton { display: flex; flex-direction: column; gap: var(--space-2h); padding: var(--space-2) 0; }
+    .skeleton-bar {
+        display: block;
+        height: 0.75rem;
+        border-radius: var(--radius-sm);
+        background: var(--surface-raised);
+    }
+    @media (prefers-reduced-motion: no-preference) {
+        .skeleton-bar {
+            background: linear-gradient(90deg, var(--surface-raised) 0%, var(--border) 50%, var(--surface-raised) 100%);
+            background-size: 200% 100%;
+            animation: shimmer 1.2s ease-in-out infinite;
+        }
+    }
+    @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+</style>
     """
     )

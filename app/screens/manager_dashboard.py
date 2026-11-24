@@ -5,6 +5,15 @@ import streamlit as st
 
 from helpers import log_audit, page_heading, purge_audit_log, queue_toast, read_audit_log, render_stats
 
+# Severity reads from an icon and a word as well as its colour.
+SEVERITY_ICONS = {"CRITICAL": "▲", "WARNING": "◆", "INFO": "●"}
+SEVERITY_COLOURS = {"CRITICAL": "#E5484D", "WARNING": "#E8B339", "INFO": "#A59C8A"}  # --color-danger, --accent-amber, --text-muted
+
+
+def _severity_colour(value: str) -> str:
+    level = str(value).split(" ")[-1]
+    return f"color: {SEVERITY_COLOURS[level]}; font-weight: 500" if level in SEVERITY_COLOURS else ""
+
 
 def _close_purge() -> None:
     st.session_state["_confirm_purge"] = None
@@ -114,18 +123,21 @@ def render() -> None:
 
     filtered_df = filtered_df.sort_values(by="timestamp", ascending=False)
 
+    shown = filtered_df[["timestamp", "user", "action", "severity", "details"]].copy()
+    shown["severity"] = shown["severity"].map(lambda s: f"{SEVERITY_ICONS.get(s, '·')} {s}")
+    styled = shown.style.map(_severity_colour, subset=["severity"])
     selection = st.dataframe(
-        filtered_df[["timestamp", "user", "action", "severity", "details"]],
+        styled,
         width="stretch",
         hide_index=True,
         on_select="rerun",
         selection_mode="single-row",
         key=f"audit_table_{st.session_state.get('_audit_table_version', 0)}",
         column_config={
-            "timestamp": st.column_config.TextColumn("Time (UTC)", width="medium"),
+            "timestamp": st.column_config.TextColumn("Time (UTC)", width="medium", pinned=True),
             "user": st.column_config.TextColumn("User", width="small"),
-            "action": st.column_config.TextColumn("Action", width="small"),
-            "severity": st.column_config.TextColumn("Severity", width="small"),
+            "action": st.column_config.TextColumn("Action", width=190),
+            "severity": st.column_config.TextColumn("Severity", width=120),
             "details": st.column_config.TextColumn("Details", width="large"),
         }
     )

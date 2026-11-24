@@ -20,7 +20,7 @@ from backend.repo.loader import (
     extract_zip,
     read_source,
 )
-from helpers import audit_event, new_scan_button, page_heading, render_stats
+from helpers import audit_event, new_scan_button, page_heading, render_stats, skeleton
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +93,7 @@ def render_scan() -> None:
             temp_dir = tempfile.mkdtemp(prefix=TEMP_PREFIX)
             repo_source = None
 
+            loading = skeleton(5)
             try:
                 with st.status("Scanning the repository", expanded=True) as status_box:
                     # 1. Loading Phase
@@ -160,6 +161,7 @@ def render_scan() -> None:
                     st.rerun()
 
             except RepoValidationError as e:
+                loading.empty()
                 cleanup_repo(temp_dir)
                 st.session_state["repo_source"] = None
                 st.session_state["scan_status"] = "error"

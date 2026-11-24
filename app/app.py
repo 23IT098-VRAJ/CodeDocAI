@@ -75,7 +75,7 @@ def page_title(screen: str) -> str:
 # ---------------------------------------------------------------------------
 st.set_page_config(
     page_title=page_title(_resolve_screen()),
-    page_icon="\U0001f7e1",
+    page_icon=str(_APP_DIR / "assets" / "favicon.svg"),
     layout="centered",
 )
 
@@ -269,7 +269,11 @@ def _scroll_to_top() -> None:
         "<script>(function () {"
         "var doc = (window.parent || window).document;"
         "var main = doc.querySelector('[data-testid=\"stMain\"]') || doc.querySelector('section.main');"
-        "if (main) { main.scrollTo(0, 0); }"
+        "if (main) { main.scrollTo(0, 0);"
+        "  var still = (window.parent || window).matchMedia('(prefers-reduced-motion: reduce)').matches;"
+        "  var block = doc.querySelector('[data-testid=\"stMainBlockContainer\"]');"
+        "  if (block && !still) { block.animate([{opacity: 0}, {opacity: 1}], {duration: 150, easing: 'ease-out'}); }"
+        "}"
         "(window.parent || window).scrollTo(0, 0);"
         "})();</script>"
     )

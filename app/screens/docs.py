@@ -4,11 +4,13 @@ Renders the dynamically generated AI documentation and module overviews.
 """
 
 import html as _html
+import re
 
 import streamlit as st
 
 from backend.coverage import coverage_table
 from backend.pipeline import load_results_cache
+from components import copy_text
 from components.diff_view import function_diff, render_diff
 from helpers import page_heading, render_stats
 
@@ -123,7 +125,9 @@ def _render_coverage(coverage: dict) -> None:
 
 def _render_definition(fn: dict, diff_mode: bool = False) -> None:
     docstring = (fn.get("docstring") or "").strip()
-    row_key = f"{fn.get('file', '')}_{fn.get('name', '')}".replace("/", "_").replace(".", "_")
+    # Component keys may not contain "__" (Spider.__init__ would), so runs of non-word characters
+    # and underscores collapse to one underscore.
+    row_key = re.sub(r"[\W_]+", "_", f"{fn.get('file', '')}_{fn.get('name', '')}").strip("_")
     with st.container(key=f"docs_fn_{row_key}", gap="xxsmall"):
         with st.container(horizontal=True, vertical_alignment="center", gap="small"):
             st.markdown(f'<code class="docs-sig">{_literal(signature(fn))}</code>',
@@ -136,7 +140,7 @@ def _render_definition(fn: dict, diff_mode: bool = False) -> None:
             render_diff(*change, title=signature(fn), key=f"diff_inline_{row_key}")
             return
         if docstring:
-            st.markdown(f'<p class="docs-docstring">{_literal(docstring)}</p>', unsafe_allow_html=True)
+            copy_text.docstring(docstring, key=f"doc_copy_{row_key}")
         elif fn.get("kind") == "class":
             st.caption("Class docstrings aren’t drafted: the local model learned from functions only.")
         else:

@@ -12,7 +12,7 @@ _HTML = """
     <input class="search" type="text" placeholder="Jump to a screen or function…"
            aria-label="Search commands" autocomplete="off" spellcheck="false" />
     <ul class="results" role="listbox" aria-label="Commands"></ul>
-    <div class="footer"><span>↑↓ to move</span><span>Enter to open</span><span>Esc to close</span></div>
+    <div class="footer"><span>↑↓ to move</span><span>Enter to open</span><span>Esc to close</span><span>/ on Ask focuses the question box</span></div>
   </div>
 </div>
 """
@@ -28,7 +28,7 @@ _CSS = """
   align-items: flex-start;
   padding-top: 12vh;
   background: rgba(0, 0, 0, 0.6);
-  font-family: var(--font-mono, var(--st-font));
+  font-family: var(--font-sans, var(--st-font));
 }
 .overlay[hidden] { display: none; }
 @media (prefers-reduced-motion: no-preference) {
@@ -187,7 +187,14 @@ export default function (component) {
     window.removeEventListener("codedocai:palette", window.__codedocaiPalette.open)
   }
   const onKey = (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); overlay.hidden ? open() : close() }
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); overlay.hidden ? open() : close(); return }
+    const slash = e.key === "/" || (e.code === "Slash" && !e.shiftKey && !e.key)
+    if (slash && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      const active = e.composedPath ? e.composedPath()[0] : document.activeElement
+      const typing = active && (active.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName || ""))
+      const chat = document.querySelector('[data-testid="stChatInput"] textarea')
+      if (!typing && chat && overlay.hidden) { e.preventDefault(); chat.focus() }
+    }
   }
   window.__codedocaiPalette = { key: onKey, open }
   window.addEventListener("keydown", onKey)

@@ -9,7 +9,7 @@ import streamlit as st
 
 from backend.pipeline import generate_overview, index_overview, run_pipeline, save_results_cache
 from backend.repo.loader import cleanup_repo
-from helpers import audit_event, page_heading, render_stats, session_collection_name
+from helpers import audit_event, page_heading, render_stats, session_collection_name, skeleton
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +195,7 @@ def render_generation() -> None:
     progress_slot = st.empty()
     with st.expander("Details", type="compact", key="compact_gen_details"):
         log_slot = st.empty()
+    loading = skeleton(6)
     log_lines = []
     finished = False
     phase, drafted = "parse", 0
@@ -236,6 +237,7 @@ def render_generation() -> None:
             break
         show()
 
+    loading.empty()
     if finished:
         st.session_state["generation_complete"] = True
         results = st.session_state.get("pipeline_results") or {}

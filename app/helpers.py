@@ -146,6 +146,19 @@ def render_stats(items: list[tuple[str, object]], key: str | None = None) -> Non
         st.markdown(html_text, unsafe_allow_html=True)
 
 
+def skeleton(lines: int = 3, *, key: str | None = None):
+    """
+    Grey placeholder bars for content that is on its way. Returns the st.empty slot,
+    so the caller can clear it when the real content arrives. Shimmers only when the
+    visitor allows motion.
+    """
+    widths = [92, 78, 85, 64, 88, 72]
+    bars = "".join(f'<span class="skeleton-bar" style="width:{widths[i % len(widths)]}%"></span>' for i in range(lines))
+    slot = st.empty()
+    slot.markdown(f'<div class="skeleton" role="status" aria-label="Loading">{bars}</div>', unsafe_allow_html=True)
+    return slot
+
+
 def queue_toast(message: str, icon: str = ":material/check_circle:") -> None:
     """A toast shown on the next run; use it before st.rerun(), which would drop one shown now."""
     st.session_state.setdefault("_toasts", []).append((message, icon))

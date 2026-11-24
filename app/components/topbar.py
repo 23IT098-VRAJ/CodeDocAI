@@ -32,7 +32,7 @@ _CSS = """
   align-items: center;
   gap: 12px;
   min-height: 56px;
-  font-family: var(--font-mono, var(--st-font));
+  font-family: var(--font-sans, var(--st-font));
   color: var(--text-primary, var(--st-text-color));
 }
 button {
@@ -115,6 +115,7 @@ button:focus-visible { outline: 2px solid var(--accent-amber, #E8B339); outline-
 }
 .badge::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
 .kbd {
+  font-family: var(--font-mono, var(--st-code-font));
   font-size: 0.75rem;
   color: var(--text-muted, #A59C8A);
   border-color: var(--border, #222222);

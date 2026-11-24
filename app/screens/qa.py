@@ -13,11 +13,13 @@ import streamlit as st
 from backend.agents.qa import GREETING_REPLY, answer_codebase_question, is_follow_up, retrieval_query
 from backend.rag.vectorstore import query_chunks
 from backend.security import SECURITY_REFUSAL, classify_question
+from components import copy_text
 from helpers import (
     audit_event,
     new_scan_button,
     page_heading,
     session_collection_name,
+    skeleton,
 )
 
 logger = logging.getLogger(__name__)
@@ -138,21 +140,20 @@ def _citation_pills(citation: str | None) -> str:
     return f'<div class="qa-citations" aria-label="Sources">{pills}</div>'
 
 
-def _render_answer(content: str, citation: str | None) -> None:
+def _render_answer(content: str, citation: str | None, key: str) -> None:
     st.markdown(content)
-    pills = _citation_pills(citation)
-    if pills:
-        st.markdown(pills, unsafe_allow_html=True)
+    if citation:
+        copy_text.pills([part.strip() for part in citation.split("|") if part.strip()], key=key)
 
 
 def _render_history(history: list) -> None:
-    for message in history:
+    for index, message in enumerate(history):
         if message.get("role") == "user":
             with st.chat_message("user", avatar=USER_AVATAR):
                 st.text(message.get("content", ""))
         else:
             with st.chat_message("assistant", avatar=ASSISTANT_AVATAR):
-                _render_answer(message.get("content", ""), message.get("citation"))
+                _render_answer(message.get("content", ""), message.get("citation"), key=f"qa_cite_{index}")
 
 
 def _starter_questions(scan_results: list) -> list[str]:
@@ -212,8 +213,10 @@ def render_qa() -> None:
         with st.container(key="compact_qa_status"), \
                 st.status(":shimmer[Finding the closest code]", type="compact", expanded=False) as status:
             st.caption("Searching this session's index for the four closest entries, then asking the model.")
-            _audit_question(question)
-            _process_and_append_qa(question)
-            status.update(label="Searched the index", state="complete")
+        loading = skeleton(3)
+        _audit_question(question)
+        _process_and_append_qa(question)
+        status.update(label="Searched the index", state="complete")
+        loading.empty()
         answer = st.session_state["qa_chat_history"][-1]
-        _render_answer(answer.get("content", ""), answer.get("citation"))
+        _render_answer(answer.get("content", ""), answer.get("citation"), key="qa_cite_live")

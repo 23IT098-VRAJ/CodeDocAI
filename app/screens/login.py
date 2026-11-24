@@ -78,7 +78,7 @@ def _render_card() -> None:
                 args=(username, password),
             )
 
-    with st.form("enterprise_sso_form"):
+    with st.form("enterprise_sso_form", border=False):
         username = st.text_input("Username", placeholder="vraj, meet, admin", key="login_username").strip().lower()
         password = st.text_input("Password", type="password", key="login_password")
         submitted = st.form_submit_button("Sign in", type="primary", width="stretch")
