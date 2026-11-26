@@ -261,7 +261,10 @@ def render_qa() -> None:
         loading = skeleton(3)
         _audit_question(question)
         _process_and_append_qa(question)
-        status.update(label="Searched the index", state="complete")
+        # A blocked question never reaches the index or the model, so the label must not say it searched.
+        blocked = classify_question(question) == "CRITICAL"
+        status.update(label="Blocked on this machine, nothing searched" if blocked else "Searched the index",
+                      state="complete")
         loading.empty()
         answer = st.session_state["qa_chat_history"][-1]
         st.write_stream(_stream_words(without_markers(answer.get("content", ""))))

@@ -158,17 +158,24 @@ _FX_SCRIPT = r"""
   // \x3c and \x3e are angle brackets: written literally, the tag-like syntax string got the whole
   // script stripped on its way into the page (so do not write them literally anywhere in here).
   try { w.CSS.registerProperty({ name: '--ixl-p', syntax: '\x3cpercentage\x3e', inherits: false, initialValue: '0%' }); } catch (e) {}
+  // The figure's own text node is edited in place, never replaced: React keeps a reference to
+  // that node, and when the next screen reuses the element it writes the new value into it.
+  // Setting textContent swapped in a new node, so the old figures stayed on the next screen.
   function countUp(el) {
     if (el.dataset.counted) return;
     el.dataset.counted = '1';
-    var text = el.textContent, parts = text.split(/(\d+)/);
-    if (still || parts.length < 2) return;
+    var node = el.firstChild;
+    if (still || !node || node.nodeType !== 3 || node.nextSibling) return;
+    var text = node.nodeValue, parts = text.split(/(\d+)/), last = text;
+    if (parts.length < 2) return;
     var start = null, ms = 700;
     function frame(t) {
+      if (node.nodeValue !== last) return;  // React rendered a new value: leave it alone
       if (start === null) start = t;
       var k = Math.min((t - start) / ms, 1), e = 1 - Math.pow(1 - k, 3);
-      el.textContent = parts.map(function (p) { return /^\d+$/.test(p) ? String(Math.round(parseInt(p, 10) * e)) : p; }).join('');
-      if (k < 1) w.requestAnimationFrame(frame); else el.textContent = text;
+      last = k < 1 ? parts.map(function (p) { return /^\d+$/.test(p) ? String(Math.round(parseInt(p, 10) * e)) : p; }).join('') : text;
+      node.nodeValue = last;
+      if (k < 1) w.requestAnimationFrame(frame);
     }
     w.requestAnimationFrame(frame);
   }

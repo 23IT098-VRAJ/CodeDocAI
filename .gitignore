@@ -121,3 +121,10 @@ pyproject.toml
 design-system/
 # taste-skill (design-taste-frontend) build/checker output
 .taste-skill/
+/TEMP
+# SGP report drafts and build files (kept local)
+/report
+
+# Local project guide for the viva (not part of the public repo)
+/explain.md
+/explain/
